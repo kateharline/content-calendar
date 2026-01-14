@@ -1,0 +1,386 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  
+  /* Platform colors */
+  --color-twitter: var(--twitter);
+  --color-twitter-hover: var(--twitter-hover);
+  --color-zora: var(--zora);
+  --color-zora-accent: var(--zora-accent);
+  --color-engage: var(--engage);
+}
+
+/* Light, airy, minimal palette */
+:root {
+  --radius: 1rem;
+  
+  /* Base - clean off-white */
+  --background: #fafaf9;
+  --foreground: #1c1c1c;
+  
+  /* Cards - pure white with subtle shadow */
+  --card: #ffffff;
+  --card-foreground: #1c1c1c;
+  
+  /* Popover */
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1c;
+  
+  /* Primary - soft blue-gray */
+  --primary: #1c1c1c;
+  --primary-foreground: #ffffff;
+  
+  /* Secondary - light gray */
+  --secondary: #f4f4f5;
+  --secondary-foreground: #1c1c1c;
+  
+  /* Muted - softer grays */
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  
+  /* Accent */
+  --accent: #f4f4f5;
+  --accent-foreground: #1c1c1c;
+  
+  /* Destructive */
+  --destructive: #ef4444;
+  
+  /* Border - very light */
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #a1a1aa;
+  
+  /* Platform colors */
+  --twitter: #1d9bf0;
+  --twitter-hover: #1a8cd8;
+  --zora: #5b5bd6;
+  --zora-accent: #7c7cff;
+  --engage: #a1a1aa;
+  
+  /* Chart colors */
+  --chart-1: #1d9bf0;
+  --chart-2: #5b5bd6;
+  --chart-3: #f97316;
+  --chart-4: #22c55e;
+  --chart-5: #eab308;
+  
+  /* Sidebar */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1c1c1c;
+  --sidebar-primary: #1c1c1c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #1c1c1c;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #a1a1aa;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar - minimal */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d4d4d8;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1aa;
+  }
+}
+
+/* Timeline drop zone animations */
+@keyframes timeline-expand {
+  0% {
+    width: 4px;
+  }
+  100% {
+    width: 80px;
+  }
+}
+
+@keyframes genie-lift {
+  0% {
+    transform: scale(1) rotate(0deg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  100% {
+    transform: scale(1.02) rotate(-1deg);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+  }
+}
+
+@keyframes time-slot-highlight {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(29, 155, 240, 0.1);
+  }
+}
+
+.timeline-dropzone {
+  transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.timeline-dropzone.expanded {
+  animation: timeline-expand 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.dragging-card {
+  animation: genie-lift 0.2s ease-out forwards;
+  cursor: grabbing !important;
+  z-index: 1000;
+}
+
+.time-slot-active {
+  animation: time-slot-highlight 1s ease-in-out infinite;
+}
+
+/* Twitter-native styling */
+.tweet-card {
+  background: white;
+  border: 1px solid #eff3f4;
+  border-radius: 16px;
+  transition: background-color 0.2s;
+}
+
+.tweet-card:hover {
+  background: #f7f9f9;
+}
+
+.tweet-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1d9bf0 0%, #1a8cd8 100%);
+}
+
+.tweet-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  color: #536471;
+  font-size: 13px;
+}
+
+.tweet-action-btn:hover {
+  color: var(--twitter);
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.tweet-action-btn.like:hover {
+  color: #f91880;
+  background: rgba(249, 24, 128, 0.1);
+}
+
+.tweet-action-btn.retweet:hover {
+  color: #00ba7c;
+  background: rgba(0, 186, 124, 0.1);
+}
+
+/* Zora-native styling */
+.zora-card {
+  background: white;
+  border: 1px solid #e4e4e7;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.zora-media-frame {
+  aspect-ratio: 1;
+  background: #f4f4f5;
+  border: 2px dashed #d4d4d8;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zora-media-frame:hover {
+  border-color: var(--zora);
+  background: #faf5ff;
+}
+
+.zora-ticker {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--zora);
+}
+
+/* Click-to-edit fields */
+.editable-field {
+  cursor: text;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.editable-field:hover {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+}
+
+.editable-field:focus {
+  background: white;
+  border-color: var(--twitter);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.1);
+}
+
+/* Status bar styling */
+.status-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: #f4f4f5;
+  border-radius: 8px;
+}
+
+.status-step {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+  color: #71717a;
+}
+
+.status-step:hover {
+  background: #e4e4e7;
+}
+
+.status-step.active {
+  background: white;
+  color: #1c1c1c;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.status-step.completed {
+  color: #22c55e;
+}
+
+/* Character meter like Twitter */
+.char-meter {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #e4e4e7;
+  position: relative;
+}
+
+.char-meter.warning {
+  border-color: #f59e0b;
+}
+
+.char-meter.danger {
+  border-color: #ef4444;
+}
+
+.char-meter svg {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  transform: rotate(-90deg);
+}
+
+/* Engagement block - muted */
+.engage-card {
+  background: #fafafa;
+  border: 1px dashed #d4d4d8;
+  border-radius: 12px;
+  opacity: 0.8;
+}
+
+.engage-card:hover {
+  opacity: 1;
+  border-color: #a1a1aa;
+}
+
+/* Schedule button */
+.schedule-btn {
+  background: linear-gradient(135deg, #1d9bf0 0%, #1a8cd8 100%);
+  color: white;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  transition: all 0.2s;
+}
+
+.schedule-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(29, 155, 240, 0.3);
+}
+
+/* Preserve line breaks in tweet text */
+.tweet-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
