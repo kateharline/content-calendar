@@ -23,6 +23,9 @@ interface TimelineProps {
   onUpdateEngagement: (blockId: string, updates: Partial<EngagementBlock>) => void;
   onAddTweet?: (tweet: TweetItem) => void;
   onAddZora?: (content: ZoraContent) => void;
+  onDeleteTweet?: (tweetId: string) => void;
+  onDeleteZora?: (contentId: string) => void;
+  onDeleteEngagement?: (blockId: string) => void;
 }
 
 interface ContentItem {
@@ -33,7 +36,7 @@ interface ContentItem {
   day: DayOfWeek;
 }
 
-export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement, onAddTweet, onAddZora }: TimelineProps) {
+export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement, onAddTweet, onAddZora, onDeleteTweet, onDeleteZora, onDeleteEngagement }: TimelineProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ day: DayOfWeek; index: number } | null>(null);
@@ -340,37 +343,39 @@ export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement
 
               {/* Items */}
               <div className="space-y-2">
-                {/* Gap at start */}
-                <div className={`transition-all duration-200 ${shouldShowGap(group.day, 0) ? 'h-24' : 'h-0'}`} />
-
-                {items.length === 0 && !shouldShowGap(group.day, 0) ? (
-                  <div 
-                    className="py-8 border border-dashed border-gray-200 rounded-xl text-center text-gray-400"
-                    onMouseEnter={() => !draggingId && setHoveredGap({ day: group.day, index: 0 })}
-                    onMouseLeave={() => setHoveredGap(null)}
-                  >
-                    {hoveredGap?.day === group.day && hoveredGap?.index === 0 && (onAddTweet || onAddZora) ? (
-                      <div className="flex justify-center gap-2">
+                {/* Gap at start - always show hoverable area */}
+                <div 
+                  className="h-12 my-2 transition-all duration-200"
+                  onMouseEnter={() => !draggingId && setHoveredGap({ day: group.day, index: 0 })}
+                  onMouseLeave={() => setHoveredGap(null)}
+                >
+                  {!draggingId && hoveredGap?.day === group.day && hoveredGap?.index === 0 && (onAddTweet || onAddZora) && (
+                    <div className="h-full flex items-center justify-end pr-4">
+                      <div className="flex gap-1">
                         {onAddTweet && (
                           <button
-                            onClick={() => handleAddTweet(group.day, '09:00')}
-                            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-100 hover:text-blue-600 rounded-full"
+                            onClick={() => handleAddTweet(group.day, items.length > 0 ? getMidpointTime(null, items[0]) : '09:00')}
+                            className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-100 hover:text-blue-600 rounded-full"
                           >
                             + Tweet
                           </button>
                         )}
                         {onAddZora && (
                           <button
-                            onClick={() => handleAddZora(group.day, '09:00')}
-                            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-violet-100 hover:text-violet-600 rounded-full"
+                            onClick={() => handleAddZora(group.day, items.length > 0 ? getMidpointTime(null, items[0]) : '09:00')}
+                            className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-violet-100 hover:text-violet-600 rounded-full"
                           >
                             + Zora
                           </button>
                         )}
                       </div>
-                    ) : (
-                      'No content scheduled'
-                    )}
+                    </div>
+                  )}
+                </div>
+
+                {items.length === 0 ? (
+                  <div className="py-8 border border-dashed border-gray-200 rounded-xl text-center text-gray-400">
+                    No content scheduled
                   </div>
                 ) : (
                   items.map((item, index) => (
@@ -387,29 +392,32 @@ export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement
                           <ZoraCard
                             content={item.data as ZoraContent}
                             onUpdate={(updates) => onUpdateZora(item.id, updates)}
+                            onDelete={onDeleteZora ? () => onDeleteZora(item.id) : undefined}
                           />
                         )}
                         {item.type === 'tweet' && (
                           <TweetCard
                             tweet={item.data as TweetItem}
                             onUpdate={(updates) => onUpdateTweet(item.id, updates)}
+                            onDelete={onDeleteTweet ? () => onDeleteTweet(item.id) : undefined}
                           />
                         )}
                         {item.type === 'engagement' && (
                           <EngagementCard
                             block={item.data as EngagementBlock}
                             onUpdate={(updates) => onUpdateEngagement(item.id, updates)}
+                            onDelete={onDeleteEngagement ? () => onDeleteEngagement(item.id) : undefined}
                           />
                         )}
                       </div>
 
-                      {/* Gap after this item */}
+                      {/* Gap after this item - always show hoverable area */}
                       <div 
-                        className={`transition-all duration-200 ${shouldShowGap(group.day, index + 1) ? 'h-24 my-2' : 'h-0'}`}
+                        className="h-12 my-2 transition-all duration-200"
                         onMouseEnter={() => !draggingId && setHoveredGap({ day: group.day, index: index + 1 })}
                         onMouseLeave={() => setHoveredGap(null)}
                       >
-                        {!draggingId && hoveredGap?.day === group.day && hoveredGap?.index === index + 1 && (
+                        {!draggingId && hoveredGap?.day === group.day && hoveredGap?.index === index + 1 && (onAddTweet || onAddZora) && (
                           <div className="h-full flex items-center justify-end pr-4">
                             <div className="flex gap-1">
                               {onAddTweet && (

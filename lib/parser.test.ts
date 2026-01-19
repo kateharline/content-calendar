@@ -2,7 +2,7 @@
 // Run with: npx ts-node lib/parser.test.ts
 // Or check output in browser console
 
-import { parseTime, parseDay, parseTweetSchedule, parseVoiceActivation, parseArtifact } from './parser';
+import { parseTime, parseDay, parseTweetSchedule, parseZoraContent, parseAllContent } from './parser';
 
 // Sample raw inputs based on Kate's real format
 const SAMPLE_TWEET_SCHEDULE = `TRUTHOPS — WEEKLY EXECUTION DOC
@@ -230,7 +230,7 @@ function testParseTweetSchedule() {
   // Test tweets
   console.log(`  Tweets: ${result.tweets.length} found`);
   for (const tweet of result.tweets.slice(0, 3)) {
-    console.log(`    - [${tweet.day} ${tweet.time}] ${tweet.postType}: "${tweet.text.slice(0, 40)}..."`);
+    console.log(`    - [${tweet.day} ${tweet.time}] "${tweet.text.slice(0, 40)}..."`);
   }
   
   // Test engagement blocks
@@ -246,46 +246,44 @@ function testParseTweetSchedule() {
   return result;
 }
 
-function testParseVoiceActivation() {
-  console.log('=== parseVoiceActivation tests ===');
+function testParseZoraContent() {
+  console.log('=== parseZoraContent tests ===');
   
-  const result = parseVoiceActivation(SAMPLE_VOICE_ACTIVATION);
+  const result = parseZoraContent(SAMPLE_VOICE_ACTIVATION, SAMPLE_ARTIFACT);
   
-  if (result) {
-    console.log(`  Script length: ${result.scriptText.length} chars`);
-    console.log(`  Script preview: "${result.scriptText.slice(0, 60)}..."`);
-    console.log(`  REVE Scenes: ${result.revePrompts.length}`);
-    for (const scene of result.revePrompts) {
-      console.log(`    - Scene ${scene.sceneNumber}: ${scene.title}`);
+  console.log(`  Total Zora items: ${result.length}`);
+  
+  for (const item of result) {
+    console.log(`\n  ${item.type.toUpperCase()} - ${item.title}:`);
+    console.log(`    Ticker: ${item.ticker || 'none'}`);
+    console.log(`    Description: "${(item.description || '').slice(0, 50)}..."`);
+    if (item.scriptText) {
+      console.log(`    Script: "${item.scriptText.slice(0, 50)}..."`);
     }
-    console.log(`  Style block: ${result.styleBlock.slice(0, 50)}...`);
-    console.log(`  Zora caption: ${result.zoraCaption.slice(0, 50)}...`);
-    console.log(`  Status: ${result.status}`);
+    console.log(`    REVE Prompt: "${(item.revePrompt || '').slice(0, 50)}..."`);
+    console.log(`    Status: ${item.status}`);
   }
   
   return result;
 }
 
-function testParseArtifact() {
-  console.log('=== parseArtifact tests ===');
+function testParseAllContent() {
+  console.log('=== parseAllContent (full integration) ===');
   
-  const result = parseArtifact(SAMPLE_ARTIFACT);
+  const result = parseAllContent(SAMPLE_TWEET_SCHEDULE, SAMPLE_VOICE_ACTIVATION, SAMPLE_ARTIFACT);
   
-  if (result) {
-    console.log(`  Ticker: ${result.ticker}`);
-    console.log(`  Title: ${result.title}`);
-    console.log(`  Piece prompt length: ${result.piecePrompt?.length || 0} chars`);
-    console.log(`  Description length: ${result.description.length} chars`);
-    console.log(`  Usage instructions: ${result.usageInstructions ? 'present' : 'missing'}`);
-    console.log(`  Status: ${result.status}`);
-  }
+  console.log(`  Week: ${result.metadata.weekOf}`);
+  console.log(`  Theme: ${result.metadata.theme}`);
+  console.log(`  Tweets: ${result.tweets.length}`);
+  console.log(`  Engagement Blocks: ${result.engagementBlocks.length}`);
+  console.log(`  Zora Content: ${result.zoraContent.length}`);
   
   return result;
 }
 
 // Export test runner for browser
 export function runAllTests() {
-  console.log('\\n🧪 TruthOps Parser Test Suite\\n');
+  console.log('\n🧪 TruthOps Parser Test Suite\n');
   
   testParseTime();
   console.log('');
@@ -293,13 +291,12 @@ export function runAllTests() {
   console.log('');
   testParseTweetSchedule();
   console.log('');
-  testParseVoiceActivation();
+  testParseZoraContent();
   console.log('');
-  testParseArtifact();
+  testParseAllContent();
   
-  console.log('\\n✅ All tests completed\\n');
+  console.log('\n✅ All tests completed\n');
 }
 
 // Export sample data for testing
 export { SAMPLE_TWEET_SCHEDULE, SAMPLE_VOICE_ACTIVATION, SAMPLE_ARTIFACT };
-

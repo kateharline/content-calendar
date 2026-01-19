@@ -335,56 +335,130 @@ export function parseZoraContent(voiceRaw: string, artifactRaw: string): ZoraCon
   if (voiceRaw.trim()) {
     let scriptText = '';
     let revePrompts: string[] = [];
+    let styleBlock: string[] = [];
     let zoraCaption = '';
+    let currentSceneTitle = '';
+    let currentSceneContent: string[] = [];
     
     const lines = voiceRaw.split('\n');
     let currentSection = '';
     
-    for (const line of lines) {
+    const saveCurrentScene = () => {
+      if (currentSceneTitle && currentSceneContent.length > 0) {
+        revePrompts.push(`${currentSceneTitle}\n${currentSceneContent.join('\n')}`);
+      } else if (currentSceneContent.length > 0) {
+        revePrompts.push(currentSceneContent.join('\n'));
+      }
+      currentSceneTitle = '';
+      currentSceneContent = [];
+    };
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trim();
-      if (!trimmed) continue;
       
-      if (trimmed.match(/^1\.\s*(Final\s+)?Voice\s+Script/i)) {
+      // Detect section headers - be more flexible with patterns
+      if (trimmed.match(/^1\.\s*(Final\s+)?Voice\s+Script/i) || 
+          trimmed.match(/Voice\s+Script\s*\(?locked\)?/i)) {
+        saveCurrentScene();
         currentSection = 'script';
+        // Skip the "(locked)" line if it's on the next line
+        if (i + 1 < lines.length && lines[i + 1].trim().match(/^\(locked\)$/i)) {
+          i++;
+        }
         continue;
       }
-      if (trimmed.match(/^2\.\s*REVE/i) || trimmed.match(/^REVE\s*[—–-]/i)) {
+      if (trimmed.match(/^2\.\s*REVE/i) || 
+          trimmed.match(/^REVE\s*[—–-]/i) ||
+          trimmed.match(/Scene-by-Scene\s+Prompts/i)) {
+        saveCurrentScene();
         currentSection = 'reve';
         continue;
       }
-      if (trimmed.match(/^3\.\s*Overall\s+Style/i)) {
+      if (trimmed.match(/^3\.\s*Overall\s+Style/i) || 
+          trimmed.match(/^Overall\s+Style\s+Block/i) ||
+          trimmed.match(/^Style\s+Block/i)) {
+        saveCurrentScene();
         currentSection = 'style';
         continue;
       }
-      if (trimmed.match(/^(4\.\s*)?Zora\s+Caption/i)) {
+      if (trimmed.match(/^(4\.\s*)?Zora\s+Caption/i) ||
+          trimmed.match(/^Zora\s+Description/i)) {
+        saveCurrentScene();
         currentSection = 'caption';
         continue;
       }
       
+      // Skip locked indicator on its own line
+      if (trimmed.match(/^\(locked\)$/i)) {
+        continue;
+      }
+      
+      // Detect scene headers in REVE section (e.g., "Scene 1 — Containment")
+      if (currentSection === 'reve' && trimmed.match(/^Scene\s+\d+\s*[—–-]/i)) {
+        saveCurrentScene();
+        currentSceneTitle = trimmed;
+        continue;
+      }
+      
+      // Handle content - preserve empty lines for multi-line content
       switch (currentSection) {
         case 'script':
-          if (!trimmed.match(/^\(locked\)$/i)) {
-            scriptText += (scriptText ? '\n' : '') + trimmed;
+          if (scriptText) {
+            scriptText += '\n' + (trimmed || '');
+          } else {
+            scriptText = trimmed || '';
           }
           break;
         case 'reve':
+          if (trimmed) {
+            currentSceneContent.push(trimmed);
+          } else if (currentSceneContent.length > 0) {
+            // Preserve empty lines within scenes
+            currentSceneContent.push('');
+          }
+          break;
         case 'style':
-          revePrompts.push(trimmed);
+          if (trimmed) {
+            styleBlock.push(trimmed);
+          } else if (styleBlock.length > 0) {
+            styleBlock.push('');
+          }
           break;
         case 'caption':
-          zoraCaption += (zoraCaption ? '\n' : '') + trimmed;
+          if (zoraCaption) {
+            zoraCaption += '\n' + (trimmed || '');
+          } else {
+            zoraCaption = trimmed || '';
+          }
           break;
       }
+    }
+    
+    // Save any remaining scene
+    saveCurrentScene();
+    
+    // Combine REVE prompts and style block
+    const allPrompts: string[] = [];
+    if (revePrompts.length > 0) {
+      allPrompts.push('--- REVE Scene Prompts ---');
+      allPrompts.push(...revePrompts);
+    }
+    if (styleBlock.length > 0) {
+      allPrompts.push('\n--- Style Block ---');
+      allPrompts.push(styleBlock.join('\n'));
     }
     
     content.push({
       id: generateId(),
       type: 'video',
       day: 'Mon', // Default to Monday, can be moved
+      time: null,
       ticker: null,
       title: 'Voice Activation',
-      description: zoraCaption || scriptText,
-      revePrompt: revePrompts.join('\n\n'),
+      description: zoraCaption,
+      scriptText: scriptText,
+      revePrompt: allPrompts.join('\n\n'),
       status: revePrompts.length > 0 ? 'reve' : 'prompt',
     });
   }
@@ -392,8 +466,10 @@ export function parseZoraContent(voiceRaw: string, artifactRaw: string): ZoraCon
   // Parse artifact (image)
   if (artifactRaw.trim()) {
     let ticker: string | null = null;
+    let title = 'Artifact';
     let description = '';
     let piecePrompt = '';
+    let usageInstructions = '';
     
     const lines = artifactRaw.split('\n');
     let currentSection = 'prompt';
@@ -402,18 +478,35 @@ export function parseZoraContent(voiceRaw: string, artifactRaw: string): ZoraCon
       const trimmed = line.trim();
       if (!trimmed) continue;
       
-      const tickerMatch = trimmed.match(/^\$(\w+)/);
+      // Extract ticker (e.g., $TICKER or $Ticker)
+      const tickerMatch = trimmed.match(/^\$(\w+)\s*$/);
       if (tickerMatch) {
-        ticker = '$' + tickerMatch[1];
+        ticker = '$' + tickerMatch[1].toUpperCase();
         continue;
       }
       
-      if (trimmed.match(/^2\.\s*REFINED/i) || trimmed.match(/DESCRIPTION/i)) {
+      // Detect section headers
+      if (trimmed.match(/^1\.\s*/i) && trimmed.match(/layout|prompt/i)) {
+        currentSection = 'prompt';
+        continue;
+      }
+      if (trimmed.match(/^2\.\s*REFINED/i) || 
+          trimmed.match(/DESCRIPTION\s+COPY/i) ||
+          trimmed.match(/ZORA\s+DESCRIPTION/i)) {
         currentSection = 'description';
         continue;
       }
-      if (trimmed.match(/^3\.\s*EXPLICIT/i) || trimmed.match(/USAGE/i)) {
+      if (trimmed.match(/^3\.\s*EXPLICIT/i) || 
+          trimmed.match(/USAGE\s+INSTRUCTIONS/i) ||
+          trimmed.match(/How\s+to\s+use/i)) {
         currentSection = 'usage';
+        continue;
+      }
+      
+      // Skip header lines that aren't content
+      if (trimmed.match(/^Header\s*\(/i) ||
+          trimmed.match(/^Main\s+body\s*\(/i) ||
+          trimmed.match(/^(Quadrant|Timing|Method|Rule)\s*$/i)) {
         continue;
       }
       
@@ -422,19 +515,25 @@ export function parseZoraContent(voiceRaw: string, artifactRaw: string): ZoraCon
           piecePrompt += (piecePrompt ? '\n' : '') + trimmed;
           break;
         case 'description':
-        case 'usage':
           description += (description ? '\n' : '') + trimmed;
+          break;
+        case 'usage':
+          usageInstructions += (usageInstructions ? '\n' : '') + trimmed;
           break;
       }
     }
+    
+    // Combine description and usage if both present
+    const fullDescription = description + (usageInstructions ? '\n\n--- Usage ---\n' + usageInstructions : '');
     
     content.push({
       id: generateId(),
       type: 'image',
       day: 'Mon', // Default to Monday
+      time: null,
       ticker,
-      title: 'Artifact',
-      description,
+      title,
+      description: fullDescription,
       revePrompt: piecePrompt,
       status: piecePrompt ? 'prompt' : 'prompt',
     });

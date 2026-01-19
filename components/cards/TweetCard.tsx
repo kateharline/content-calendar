@@ -7,6 +7,7 @@ import { formatTimeForDisplay } from '@/lib/parser';
 interface TweetCardProps {
   tweet: TweetItem;
   onUpdate: (updates: Partial<TweetItem>) => void;
+  onDelete?: () => void;
   profileImage?: string;
   displayName?: string;
   handle?: string;
@@ -18,6 +19,7 @@ const MAX_CHARS = 280;
 export function TweetCard({
   tweet,
   onUpdate,
+  onDelete,
   profileImage = '/avatar.jpg',
   displayName = 'Kate Harline, Ph.D.',
   handle = '@truthops_',
@@ -25,10 +27,15 @@ export function TweetCard({
 }: TweetCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingTime, setIsEditingTime] = useState(false);
+  const [editMode, setEditMode] = useState(false); // Edit mode for approved items
   const [editText, setEditText] = useState(tweet.text);
   const [editTime, setEditTime] = useState(tweet.time || '');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
+
+  const isApproved = tweet.status !== 'draft';
+  const canEdit = !isApproved || editMode;
 
   const charCount = editText.length;
   const charRemaining = MAX_CHARS - charCount;
@@ -54,28 +61,40 @@ export function TweetCard({
     setIsEditingTime(false);
   };
 
-  const handleSave = () => {
-    if (!isOverLimit) {
-      onUpdate({ text: editText });
+  const handleApprove = () => {
+    if (!isOverLimit && editText.trim()) {
+      // Save text and approve in one step
+      onUpdate({ text: editText, status: 'approved' });
       setIsEditing(false);
+      setEditMode(false);
     }
   };
 
-  const handleApprove = () => {
-    onUpdate({ status: 'approved' });
-  };
-
-  const handleUnapprove = () => {
+  const handleEdit = () => {
+    // Toggle back to draft and enable edit mode
     onUpdate({ status: 'draft' });
+    setEditMode(true);
+    setIsEditing(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setEditText(tweet.text);
       setIsEditing(false);
+      setEditMode(false);
     }
     if (e.key === 'Enter' && e.metaKey) {
-      handleSave();
+      handleApprove();
+    }
+  };
+
+  const handleCopy = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -91,14 +110,47 @@ export function TweetCard({
     }
   };
 
+  const CopyIcon = ({ onClick }: { onClick: () => void }) => (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="ml-1.5 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+      title="Copy"
+    >
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    </button>
+  );
+
   return (
     <div
       className={`
-        bg-white border border-gray-100 rounded-2xl p-4 transition-all
+        bg-white border border-gray-100 rounded-2xl p-4 transition-all relative
         ${isDragging ? 'shadow-xl scale-[1.02] rotate-[-1deg]' : 'hover:bg-gray-50'}
         ${isEditing ? 'ring-2 ring-blue-400 ring-opacity-50' : ''}
       `}
     >
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm('Delete this tweet?')) {
+              onDelete();
+            }
+          }}
+          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors z-10"
+          title="Delete"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+          </svg>
+        </button>
+      )}
+
       {/* Header */}
       <div className="flex items-start gap-3">
         {/* Avatar */}
@@ -136,15 +188,21 @@ export function TweetCard({
                 className="text-sm bg-blue-50 border border-blue-200 rounded px-2 py-0.5 text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
               />
             ) : (
-              <span 
-                className="text-gray-500 text-sm cursor-pointer hover:text-blue-500 hover:bg-blue-50 px-1 rounded transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditTime(tweet.time || '');
-                  setIsEditingTime(true);
-                }}
-              >
-                {formatTimeForDisplay(tweet.time) || 'Set time'}
+              <span className="flex items-center">
+                <span 
+                  className={`text-gray-500 text-sm ${canEdit ? 'cursor-pointer hover:text-blue-500 hover:bg-blue-50 px-1 rounded transition-colors' : ''}`}
+                  onClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    setEditTime(tweet.time || '');
+                    setIsEditingTime(true);
+                  }}
+                >
+                  {formatTimeForDisplay(tweet.time) || 'Set time'}
+                </span>
+                {isApproved && !editMode && tweet.time && (
+                  <CopyIcon onClick={() => handleCopy(formatTimeForDisplay(tweet.time) || '', 'time')} />
+                )}
               </span>
             )}
             {tweet.status !== 'draft' && (
@@ -236,9 +294,9 @@ export function TweetCard({
 
                   <div className="w-px h-6 bg-gray-200" />
 
-                  {/* Post button */}
+                  {/* Approve button */}
                   <button
-                    onClick={handleSave}
+                    onClick={handleApprove}
                     disabled={isOverLimit || !editText.trim()}
                     className={`
                       px-4 py-1.5 rounded-full font-bold text-sm transition-all
@@ -248,7 +306,7 @@ export function TweetCard({
                       }
                     `}
                   >
-                    Save
+                    Approve
                   </button>
                 </div>
               </div>
@@ -256,11 +314,18 @@ export function TweetCard({
           ) : (
             <>
               {/* Display tweet text */}
-              <div
-                className="mt-1 text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap cursor-text"
-                onClick={() => setIsEditing(true)}
-              >
-                {tweet.text}
+              <div className="mt-1 flex items-start gap-1">
+                <div
+                  className={`flex-1 text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap ${canEdit ? 'cursor-text' : ''}`}
+                  onClick={() => {
+                    if (canEdit) setIsEditing(true);
+                  }}
+                >
+                  {tweet.text}
+                </div>
+                {isApproved && !editMode && (
+                  <CopyIcon onClick={() => handleCopy(tweet.text, 'text')} />
+                )}
               </div>
 
               {/* Action bar */}
@@ -302,8 +367,8 @@ export function TweetCard({
                 </button>
               </div>
 
-              {/* Approve button row */}
-              <div className="flex items-center justify-end mt-3 pt-3 border-t border-gray-100">
+              {/* Approve/Edit button row */}
+              <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-100">
                 {tweet.status === 'draft' ? (
                   <button
                     onClick={handleApprove}
@@ -313,10 +378,10 @@ export function TweetCard({
                   </button>
                 ) : (
                   <button
-                    onClick={handleUnapprove}
+                    onClick={handleEdit}
                     className="px-5 py-2 bg-gray-100 text-gray-700 rounded-full font-semibold text-sm hover:bg-gray-200 transition-colors"
                   >
-                    Unapprove
+                    Edit
                   </button>
                 )}
               </div>
@@ -327,4 +392,3 @@ export function TweetCard({
     </div>
   );
 }
-

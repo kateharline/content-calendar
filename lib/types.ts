@@ -39,8 +39,9 @@ export interface ZoraContent {
   time: string | null; // Time for scheduling
   ticker: string | null;
   title: string | null;
-  description: string;
-  revePrompt: string; // All prompts in one copyable field
+  description: string; // Zora caption / description
+  scriptText?: string; // Voice script (for video type)
+  revePrompt: string; // All REVE prompts + style in one copyable field
   mediaFile?: {
     name: string;
     type: 'image' | 'video';

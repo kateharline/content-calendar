@@ -6,25 +6,31 @@ import {
   CheckCircle2,
   Clock,
   Send,
-  Loader2
 } from 'lucide-react';
-import { TweetStatus, TWEET_STATUS_LABELS } from '@/lib/types';
+import { TweetStatus } from '@/lib/types';
 
 interface StatusBadgeProps {
   status: TweetStatus;
   size?: 'sm' | 'md';
 }
 
+const STATUS_LABELS: Record<TweetStatus, string> = {
+  draft: 'Draft',
+  approved: 'Approved',
+  scheduled: 'Scheduled',
+  posted: 'Posted',
+};
+
 const STATUS_COLORS: Record<TweetStatus, string> = {
   draft: 'bg-muted text-muted-foreground border-muted',
-  ready: 'bg-green-500/20 text-green-400 border-green-500/30',
+  approved: 'bg-green-500/20 text-green-400 border-green-500/30',
   scheduled: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  posted: 'bg-twitter/20 text-twitter border-twitter/30',
+  posted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
 };
 
 const STATUS_ICONS: Record<TweetStatus, React.ReactNode> = {
   draft: <Edit className="w-3 h-3" />,
-  ready: <CheckCircle2 className="w-3 h-3" />,
+  approved: <CheckCircle2 className="w-3 h-3" />,
   scheduled: <Clock className="w-3 h-3" />,
   posted: <Send className="w-3 h-3" />,
 };
@@ -38,7 +44,7 @@ export default function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
       }`}
     >
       {STATUS_ICONS[status]}
-      <span className="ml-1">{TWEET_STATUS_LABELS[status]}</span>
+      <span className="ml-1">{STATUS_LABELS[status]}</span>
     </Badge>
   );
 }

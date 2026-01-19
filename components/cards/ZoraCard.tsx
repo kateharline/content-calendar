@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ZoraContent, ZoraStatus, ZORA_STATUS_STEPS, ZORA_STATUS_LABELS } from '@/lib/types';
 import { formatTimeForDisplay } from '@/lib/parser';
 
 interface ZoraCardProps {
   content: ZoraContent;
   onUpdate: (updates: Partial<ZoraContent>) => void;
+  onDelete?: () => void;
   profileImage?: string;
   username?: string;
   isDragging?: boolean;
@@ -15,6 +16,7 @@ interface ZoraCardProps {
 export function ZoraCard({
   content,
   onUpdate,
+  onDelete,
   profileImage = '/avatar.jpg',
   username = 'truthops',
   isDragging = false,
@@ -23,26 +25,39 @@ export function ZoraCard({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTime, setEditTime] = useState(content.time || '');
+  const [editTicker, setEditTicker] = useState(content.ticker?.replace(/^\$/, '') || '');
+  const [editMode, setEditMode] = useState(false); // Edit mode for approved items
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
+  
+  // Update local edit state when content changes
+  useEffect(() => {
+    setEditTicker(content.ticker?.replace(/^\$/, '') || '');
+  }, [content.ticker]);
+
+  const isApproved = content.status === 'posted';
+  const canEdit = !isApproved || editMode;
 
   const handleSaveTime = () => {
     onUpdate({ time: editTime });
     setIsEditingTime(false);
   };
 
-  const handleFieldChange = (field: keyof ZoraContent, value: string) => {
-    onUpdate({ [field]: value });
+  const handleFieldApprove = (field: keyof ZoraContent, value: string) => {
+    // Save field and approve in one step
+    onUpdate({ [field]: value, status: 'posted' });
+    setEditingField(null);
+    setEditMode(false);
   };
 
   const handleStatusClick = (status: ZoraStatus) => {
     onUpdate({ status });
   };
 
-  const handleCopyPrompt = async () => {
+  const handleCopy = async (text: string, field: string) => {
     try {
-      await navigator.clipboard.writeText(content.revePrompt);
-      setCopiedField('revePrompt');
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
@@ -68,6 +83,14 @@ export function ZoraCard({
 
   const handleApprove = () => {
     onUpdate({ status: 'posted' });
+    setEditMode(false);
+  };
+
+  const handleEdit = () => {
+    // Toggle back to previous status (or prompt) and enable edit mode
+    const previousStatus = currentStatusIndex > 0 ? ZORA_STATUS_STEPS[currentStatusIndex - 1] : 'prompt';
+    onUpdate({ status: previousStatus });
+    setEditMode(true);
   };
 
   const currentStatusIndex = ZORA_STATUS_STEPS.indexOf(content.status);
@@ -77,13 +100,46 @@ export function ZoraCard({
     ? (content.ticker.startsWith('$') ? content.ticker : `$${content.ticker}`)
     : null;
 
+  const CopyIcon = ({ onClick }: { onClick: () => void }) => (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="ml-1.5 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+      title="Copy"
+    >
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    </button>
+  );
+
   return (
     <div
       className={`
-        bg-white border border-gray-200 rounded-2xl overflow-hidden transition-all
+        bg-white border border-gray-200 rounded-2xl overflow-hidden transition-all relative
         ${isDragging ? 'shadow-xl scale-[1.02] rotate-[-1deg]' : 'hover:shadow-md'}
       `}
     >
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm('Delete this Zora post?')) {
+              onDelete();
+            }
+          }}
+          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors z-10"
+          title="Delete"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+          </svg>
+        </button>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
@@ -110,15 +166,21 @@ export function ZoraCard({
               className="text-xs bg-violet-50 border border-violet-200 rounded px-2 py-0.5 text-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-400/30"
             />
           ) : (
-            <span 
-              className="text-gray-500 text-xs cursor-pointer hover:text-violet-500 hover:bg-violet-50 px-1 rounded transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditTime(content.time || '');
-                setIsEditingTime(true);
-              }}
-            >
-              {formatTimeForDisplay(content.time) || 'Set time'}
+            <span className="flex items-center">
+              <span 
+                className={`text-gray-500 text-xs ${canEdit ? 'cursor-pointer hover:text-violet-500 hover:bg-violet-50 px-1 rounded transition-colors' : ''}`}
+                onClick={(e) => {
+                  if (!canEdit) return;
+                  e.stopPropagation();
+                  setEditTime(content.time || '');
+                  setIsEditingTime(true);
+                }}
+              >
+                {formatTimeForDisplay(content.time) || 'Set time'}
+              </span>
+              {isApproved && !editMode && content.time && (
+                <CopyIcon onClick={() => handleCopy(formatTimeForDisplay(content.time) || '', 'time')} />
+              )}
             </span>
           )}
         </div>
@@ -207,22 +269,48 @@ export function ZoraCard({
         <div>
           <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Ticker</label>
           {editingField === 'ticker' ? (
-            <input
-              type="text"
-              value={content.ticker?.replace(/^\$/, '') || ''}
-              onChange={(e) => handleFieldChange('ticker', '$' + e.target.value.replace(/^\$/, ''))}
-              onBlur={() => setEditingField(null)}
-              onKeyDown={(e) => e.key === 'Enter' && setEditingField(null)}
-              autoFocus
-              className="w-full bg-gray-50 text-violet-600 font-mono px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200"
-              placeholder="TICKER"
-            />
+            <div>
+              <input
+                type="text"
+                value={editTicker}
+                onChange={(e) => {
+                  setEditTicker(e.target.value.replace(/^\$/, ''));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditingField(null);
+                    setEditTicker(content.ticker?.replace(/^\$/, '') || '');
+                  }
+                }}
+                autoFocus
+                className="w-full bg-gray-50 text-violet-600 font-mono px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200"
+                placeholder="TICKER"
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => {
+                    const tickerValue = editTicker ? '$' + editTicker.replace(/^\$/, '').toUpperCase() : '';
+                    handleFieldApprove('ticker', tickerValue);
+                  }}
+                  className="px-4 py-1.5 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
           ) : (
-            <div
-              onClick={() => setEditingField('ticker')}
-              className="text-violet-600 font-mono text-sm font-bold cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors"
-            >
-              {displayTicker || 'Click to add ticker'}
+            <div className="flex items-center">
+              <div
+                onClick={() => {
+                  if (canEdit) setEditingField('ticker');
+                }}
+                className={`flex-1 text-violet-600 font-mono text-sm font-bold ${canEdit ? 'cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors' : ''}`}
+              >
+                {displayTicker || 'Click to add ticker'}
+              </div>
+              {isApproved && !editMode && displayTicker && (
+                <CopyIcon onClick={() => handleCopy(displayTicker, 'ticker')} />
+              )}
             </div>
           )}
         </div>
@@ -231,22 +319,44 @@ export function ZoraCard({
         <div>
           <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Title</label>
           {editingField === 'title' ? (
-            <input
-              type="text"
-              value={content.title || ''}
-              onChange={(e) => handleFieldChange('title', e.target.value)}
-              onBlur={() => setEditingField(null)}
-              onKeyDown={(e) => e.key === 'Enter' && setEditingField(null)}
-              autoFocus
-              className="w-full bg-gray-50 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200"
-              placeholder="Title"
-            />
+            <div>
+              <input
+                type="text"
+                value={content.title || ''}
+                onChange={(e) => {
+                  onUpdate({ title: e.target.value });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditingField(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-gray-50 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200"
+                placeholder="Title"
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => handleFieldApprove('title', content.title || '')}
+                  className="px-4 py-1.5 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
           ) : (
-            <div
-              onClick={() => setEditingField('title')}
-              className="text-gray-900 text-sm font-medium cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors"
-            >
-              {content.title || 'Click to add title'}
+            <div className="flex items-center">
+              <div
+                onClick={() => {
+                  if (canEdit) setEditingField('title');
+                }}
+                className={`flex-1 text-gray-900 text-sm font-medium ${canEdit ? 'cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors' : ''}`}
+              >
+                {content.title || 'Click to add title'}
+              </div>
+              {isApproved && !editMode && content.title && (
+                <CopyIcon onClick={() => handleCopy(content.title || '', 'title')} />
+              )}
             </div>
           )}
         </div>
@@ -255,24 +365,111 @@ export function ZoraCard({
         <div>
           <label className="text-gray-400 text-xs uppercase tracking-wide mb-1 block">Description</label>
           {editingField === 'description' ? (
-            <textarea
-              value={content.description}
-              onChange={(e) => handleFieldChange('description', e.target.value)}
-              onBlur={() => setEditingField(null)}
-              autoFocus
-              rows={3}
-              className="w-full bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200 resize-none"
-              placeholder="Description"
-            />
+            <div>
+              <textarea
+                value={content.description}
+                onChange={(e) => {
+                  onUpdate({ description: e.target.value });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditingField(null);
+                  }
+                }}
+                autoFocus
+                rows={3}
+                className="w-full bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200 resize-none"
+                placeholder="Description"
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => handleFieldApprove('description', content.description)}
+                  className="px-4 py-1.5 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
           ) : (
-            <div
-              onClick={() => setEditingField('description')}
-              className="text-gray-600 text-sm cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors line-clamp-3"
-            >
-              {content.description || 'Click to add description'}
+            <div className="flex items-start">
+              <div
+                onClick={() => {
+                  if (canEdit) setEditingField('description');
+                }}
+                className={`flex-1 text-gray-600 text-sm ${canEdit ? 'cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors line-clamp-3' : 'line-clamp-3'}`}
+              >
+                {content.description || 'Click to add description'}
+              </div>
+              {isApproved && !editMode && content.description && (
+                <CopyIcon onClick={() => handleCopy(content.description, 'description')} />
+              )}
             </div>
           )}
         </div>
+
+        {/* Script Text - Only for video type */}
+        {content.type === 'video' && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-gray-400 text-xs uppercase tracking-wide">Voice Script</label>
+              {content.scriptText && (
+                <button
+                  onClick={() => handleCopy(content.scriptText || '', 'scriptText')}
+                  className={`
+                    text-xs px-2.5 py-1 rounded-full transition-all font-medium
+                    ${copiedField === 'scriptText' 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-700'}
+                  `}
+                >
+                  {copiedField === 'scriptText' ? '✓ Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+            {editingField === 'scriptText' ? (
+              <div>
+                <textarea
+                  value={content.scriptText || ''}
+                  onChange={(e) => {
+                    onUpdate({ scriptText: e.target.value });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setEditingField(null);
+                    }
+                  }}
+                  autoFocus
+                  rows={6}
+                  className="w-full bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200 resize-none font-mono"
+                  placeholder="Voice script text..."
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => handleFieldApprove('scriptText', content.scriptText || '')}
+                    className="px-4 py-1.5 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-colors"
+                  >
+                    Approve
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start">
+                <div
+                  onClick={() => {
+                    if (canEdit) setEditingField('scriptText');
+                  }}
+                  className={`flex-1 text-gray-600 text-sm font-mono whitespace-pre-wrap ${canEdit ? 'cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors' : ''}`}
+                  style={{ maxHeight: '120px', overflow: 'auto' }}
+                >
+                  {content.scriptText || 'Click to add voice script'}
+                </div>
+                {isApproved && !editMode && content.scriptText && (
+                  <CopyIcon onClick={() => handleCopy(content.scriptText || '', 'scriptText')} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* REVE Prompt - Copyable */}
         <div>
@@ -280,7 +477,7 @@ export function ZoraCard({
             <label className="text-gray-400 text-xs uppercase tracking-wide">REVE Prompt</label>
             {content.revePrompt && (
               <button
-                onClick={handleCopyPrompt}
+                onClick={() => handleCopy(content.revePrompt, 'revePrompt')}
                 className={`
                   text-xs px-2.5 py-1 rounded-full transition-all font-medium
                   ${copiedField === 'revePrompt' 
@@ -293,19 +490,37 @@ export function ZoraCard({
             )}
           </div>
           {editingField === 'revePrompt' ? (
-            <textarea
-              value={content.revePrompt}
-              onChange={(e) => handleFieldChange('revePrompt', e.target.value)}
-              onBlur={() => setEditingField(null)}
-              autoFocus
-              rows={5}
-              className="w-full bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200 resize-none"
-              placeholder="REVE prompts..."
-            />
+            <div>
+              <textarea
+                value={content.revePrompt}
+                onChange={(e) => {
+                  onUpdate({ revePrompt: e.target.value });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEditingField(null);
+                  }
+                }}
+                autoFocus
+                rows={5}
+                className="w-full bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 border border-gray-200 resize-none"
+                placeholder="REVE prompts..."
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => handleFieldApprove('revePrompt', content.revePrompt)}
+                  className="px-4 py-1.5 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
           ) : (
             <div
-              onClick={() => setEditingField('revePrompt')}
-              className="text-gray-500 text-xs font-mono cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors line-clamp-4 whitespace-pre-wrap"
+              onClick={() => {
+                if (canEdit) setEditingField('revePrompt');
+              }}
+              className={`text-gray-500 text-xs font-mono ${canEdit ? 'cursor-text hover:bg-gray-50 px-3 py-2 rounded-lg -mx-3 transition-colors line-clamp-4 whitespace-pre-wrap' : 'line-clamp-4 whitespace-pre-wrap'}`}
             >
               {content.revePrompt || 'Click to add REVE prompt'}
             </div>
@@ -315,17 +530,21 @@ export function ZoraCard({
 
       {/* Bottom Action Bar */}
       <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-end">
-        <button 
-          onClick={handleApprove}
-          className={`
-            px-5 py-2 rounded-full font-semibold text-sm transition-all
-            ${content.status === 'posted'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-gray-900 text-white hover:bg-gray-800'}
-          `}
-        >
-          {content.status === 'posted' ? '✓ Approved' : 'Approve'}
-        </button>
+        {content.status === 'posted' ? (
+          <button
+            onClick={handleEdit}
+            className="px-5 py-2 bg-gray-100 text-gray-700 rounded-full font-semibold text-sm hover:bg-gray-200 transition-colors"
+          >
+            Edit
+          </button>
+        ) : (
+          <button 
+            onClick={handleApprove}
+            className="px-5 py-2 bg-gray-900 text-white rounded-full font-semibold text-sm hover:bg-gray-800 transition-all"
+          >
+            Approve
+          </button>
+        )}
       </div>
     </div>
   );
