@@ -155,11 +155,13 @@ export function parseTweetSchedule(raw: string): {
   
   const savePendingTweet = () => {
     if (currentTweetText.trim()) {
+      // Preserve internal newlines, only trim leading/trailing whitespace
+      const trimmedText = currentTweetText.replace(/^\s+|\s+$/g, '');
       tweets.push({
         id: generateId(),
         day: currentDay,
         time: parseTime(pendingTweetTime),
-        text: currentTweetText.trim(),
+        text: trimmedText,
         status: 'draft',
         platform: 'twitter',
       });
@@ -196,8 +198,10 @@ export function parseTweetSchedule(raw: string): {
     const trimmed = line.trim();
     
     if (!trimmed) {
-      if (collectingTweetText && currentTweetText.trim()) {
-        savePendingTweet();
+      // Preserve empty lines as part of the tweet text
+      // Only add newline if we're already collecting text (to avoid leading newline)
+      if (collectingTweetText && currentTweetText) {
+        currentTweetText += '\n';
       }
       continue;
     }
@@ -223,6 +227,7 @@ export function parseTweetSchedule(raw: string): {
       continue;
     }
     
+    // Match day headers like "MONDAY — Launch Day" or "MONDAY - Launch Day" or "MONDAY – Launch Day"
     const dayMatch = trimmed.match(/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\s*[—–-]\s*(.+)$/i);
     if (dayMatch) {
       savePendingTweet();
@@ -234,14 +239,28 @@ export function parseTweetSchedule(raw: string): {
     
     if (trimmed === 'Posting Schedule') {
       savePendingTweet();
-      inEngagementBlock = false;
+      saveEngagementBlock(); // Save engagement block when we see Posting Schedule
+      inEngagementBlock = false; // Exit engagement block state
       continue;
     }
     
-    if (trimmed.toLowerCase().includes('engagement block')) {
+    // Match "Engagement Block 1", "Engagement Block 2", or just "Engagement Block"
+    if (trimmed.match(/^Engagement\s+Block\s*\d*/i)) {
       savePendingTweet();
       saveEngagementBlock();
       inEngagementBlock = true;
+      continue;
+    }
+    
+    // Check for tweet headers FIRST - even if we're in an engagement block
+    // This ensures we exit engagement block state when we see a new tweet
+    const tweetHeaderMatch = trimmed.match(/^(Anchor Copy|Micro-post|Quote-post)\s*\((\d{1,2}:\d{2}\s*(?:AM|PM)?)\)/i);
+    if (tweetHeaderMatch) {
+      savePendingTweet();
+      saveEngagementBlock(); // Save engagement block when we see a new post
+      inEngagementBlock = false; // Exit engagement block state
+      pendingTweetTime = tweetHeaderMatch[2];
+      collectingTweetText = true;
       continue;
     }
     
@@ -265,42 +284,64 @@ export function parseTweetSchedule(raw: string): {
     }
     
     if (inEngagementBlock) {
+      // Handle time ranges like "8:00 — 8:30 AM" or "8:00 - 8:30 AM" or "8:00 – 8:30 AM"
       const timeRangeMatch = trimmed.match(/^(\d{1,2}:\d{2})\s*[—–-]\s*(\d{1,2}:\d{2})\s*(AM|PM)?/i);
       if (timeRangeMatch) {
-        const period = timeRangeMatch[3] || 'AM';
+        // Try to infer period from context or default to AM
+        let period = timeRangeMatch[3];
+        if (!period) {
+          // Check if there's a period indicator later in the line
+          const periodMatch = trimmed.match(/(AM|PM)/i);
+          period = periodMatch ? periodMatch[1] : 'AM';
+        }
         engagementStartTime = parseTime(timeRangeMatch[1] + ' ' + period) || '';
         engagementEndTime = parseTime(timeRangeMatch[2] + ' ' + period) || '';
         continue;
       }
       
+      // Collect instruction lines (can be multi-line)
       if (trimmed.startsWith('Engage with') || trimmed.startsWith('Reply to') || trimmed.startsWith('Quote-post')) {
-        engagementInstructions = trimmed;
-        continue;
-      }
-      
-      if (trimmed.match(/^[-•*]?\s*\w/) && !trimmed.includes(':')) {
-        const { targets, profileLinks } = parseEngagementTargets(trimmed);
-        engagementTargets.push(...targets);
-        engagementProfileLinks.push(...profileLinks);
-        continue;
-      }
-      
-      if (!trimmed.match(/^\d/)) {
         if (engagementInstructions) {
-          engagementInstructions += ' ' + trimmed;
+          engagementInstructions += '\n' + trimmed;
         } else {
           engagementInstructions = trimmed;
         }
         continue;
       }
-    }
-    
-    const tweetHeaderMatch = trimmed.match(/^(Anchor Copy|Micro-post|Quote-post)\s*\((\d{1,2}:\d{2}\s*(?:AM|PM)?)\)/i);
-    if (tweetHeaderMatch) {
-      savePendingTweet();
-      pendingTweetTime = tweetHeaderMatch[2];
-      collectingTweetText = true;
-      continue;
+      
+      // Extract targets and profile links from bullet points
+      if (trimmed.match(/^[-•*]\s*/) && !trimmed.includes(':')) {
+        const { targets, profileLinks } = parseEngagementTargets(trimmed);
+        engagementTargets.push(...targets);
+        engagementProfileLinks.push(...profileLinks);
+        // Also add to instructions for full context
+        if (engagementInstructions) {
+          engagementInstructions += '\n' + trimmed;
+        } else {
+          engagementInstructions = trimmed;
+        }
+        continue;
+      }
+      
+      // Collect any other non-numeric lines as instructions
+      if (!trimmed.match(/^\d/) && !trimmed.match(/^Search:/i)) {
+        if (engagementInstructions) {
+          engagementInstructions += '\n' + trimmed;
+        } else {
+          engagementInstructions = trimmed;
+        }
+        continue;
+      }
+      
+      // Handle "Search:" lines - add to instructions
+      if (trimmed.match(/^Search:/i)) {
+        if (engagementInstructions) {
+          engagementInstructions += '\n' + trimmed;
+        } else {
+          engagementInstructions = trimmed;
+        }
+        continue;
+      }
     }
     
     if (collectingTweetText) {
@@ -310,6 +351,8 @@ export function parseTweetSchedule(raw: string): {
         continue;
       }
       
+      // Preserve newlines and original line content
+      // Use trimmed version to avoid extra whitespace, but preserve the newline structure
       if (currentTweetText) {
         currentTweetText += '\n' + trimmed;
       } else {
@@ -540,6 +583,92 @@ export function parseZoraContent(voiceRaw: string, artifactRaw: string): ZoraCon
   }
   
   return content;
+}
+
+/**
+ * Split a full document into tweet schedule, voice activation, and artifact sections
+ */
+export function splitFullDocument(fullDoc: string): {
+  tweetSchedule: string;
+  voiceActivation: string;
+  artifact: string;
+} {
+  const lines = fullDoc.split('\n');
+  let tweetSchedule: string[] = [];
+  let voiceActivation: string[] = [];
+  let artifact: string[] = [];
+  
+  let currentSection: 'tweet' | 'voice' | 'artifact' | null = 'tweet';
+  let foundVoiceSection = false;
+  let foundArtifactSection = false;
+  let hasSeenDayHeader = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    // Track if we've seen a day header (MONDAY, TUESDAY, etc.) to ensure we're past the schedule section
+    if (!hasSeenDayHeader && trimmed.match(/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\s*[—–-]/i)) {
+      hasSeenDayHeader = true;
+    }
+    
+    // Detect Voice Activation section - look for clear section markers
+    // Only switch after we've seen at least one day header (to avoid false positives)
+    if (!foundVoiceSection && hasSeenDayHeader) {
+      const isVoiceHeader = trimmed.match(/^Voice\s+Activation$/i);
+      const isVoiceScript = trimmed.match(/^1\.\s*Final\s+Voice\s+Script/i) || 
+                           trimmed.match(/^1\.\s*Voice\s+Script/i) ||
+                           trimmed.match(/^Voice\s+Script\s*\(locked\)/i);
+      
+      // Check next line for "(locked)" if current line is "1. Final Voice Script"
+      const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
+      const hasLockedNext = nextLine.match(/^\(locked\)$/i);
+      
+      // Check if next line is "1. Final Voice Script" when current is "Voice Activation"
+      const nextLineIsScript = i + 1 < lines.length && 
+        (lines[i + 1].trim().match(/^1\.\s*Final\s+Voice\s+Script/i) ||
+         lines[i + 1].trim().match(/^1\.\s*Voice\s+Script/i));
+      
+      if (isVoiceHeader || isVoiceScript || hasLockedNext || nextLineIsScript) {
+        currentSection = 'voice';
+        foundVoiceSection = true;
+        voiceActivation.push(line);
+        continue;
+      }
+    }
+    
+    // Detect Artifact section - look for clear section markers
+    // Only look for artifact after we've found voice section
+    if (!foundArtifactSection && foundVoiceSection) {
+      const isArtifactHeader = trimmed.match(/^Artifact$/i);
+      const isTicker = trimmed.match(/^\$TRUTHOPS$/i);
+      const isPieceLayout = trimmed.match(/^1\.\s*Piece\s+Layout/i);
+      
+      // Artifact section should be after voice section (roughly past 60% of document)
+      if ((isArtifactHeader || (isTicker && i > lines.length * 0.6) || (isPieceLayout && i > lines.length * 0.6))) {
+        currentSection = 'artifact';
+        foundArtifactSection = true;
+        artifact.push(line);
+        continue;
+      }
+    }
+    
+    // If we've found sections, route content appropriately
+    if (currentSection === 'voice') {
+      voiceActivation.push(line);
+    } else if (currentSection === 'artifact') {
+      artifact.push(line);
+    } else {
+      // Default to tweet schedule (everything before Voice Activation)
+      tweetSchedule.push(line);
+    }
+  }
+  
+  return {
+    tweetSchedule: tweetSchedule.join('\n'),
+    voiceActivation: voiceActivation.join('\n'),
+    artifact: artifact.join('\n'),
+  };
 }
 
 /**

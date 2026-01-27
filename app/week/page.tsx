@@ -14,37 +14,40 @@ export default function WeekPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const stored = loadWeekPlan();
-    if (!stored) {
-      router.push('/');
-      return;
+    async function loadData() {
+      const stored = await loadWeekPlan();
+      if (!stored) {
+        router.push('/');
+        return;
+      }
+      setPlan(stored);
+      setLoading(false);
     }
-    setPlan(stored);
-    setLoading(false);
+    loadData();
   }, [router]);
 
-  const handleUpdateTweet = useCallback((tweetId: string, updates: Partial<TweetItem>) => {
+  const handleUpdateTweet = useCallback(async (tweetId: string, updates: Partial<TweetItem>) => {
     if (!plan) return;
     const updated = updateTweet(plan, tweetId, updates);
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleUpdateZora = useCallback((contentId: string, updates: Partial<ZoraContent>) => {
+  const handleUpdateZora = useCallback(async (contentId: string, updates: Partial<ZoraContent>) => {
     if (!plan) return;
     const updated = updateZoraContent(plan, contentId, updates);
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleUpdateEngagement = useCallback((blockId: string, updates: Partial<EngagementBlock>) => {
+  const handleUpdateEngagement = useCallback(async (blockId: string, updates: Partial<EngagementBlock>) => {
     if (!plan) return;
     const updated = updateEngagementBlock(plan, blockId, updates);
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleAddTweet = useCallback((tweet: TweetItem) => {
+  const handleAddTweet = useCallback(async (tweet: TweetItem) => {
     if (!plan) return;
     const updated = {
       ...plan,
@@ -55,10 +58,10 @@ export default function WeekPage() {
       }
     };
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleAddZora = useCallback((content: ZoraContent) => {
+  const handleAddZora = useCallback(async (content: ZoraContent) => {
     if (!plan) return;
     const updated = {
       ...plan,
@@ -69,10 +72,10 @@ export default function WeekPage() {
       }
     };
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleDeleteTweet = useCallback((tweetId: string) => {
+  const handleDeleteTweet = useCallback(async (tweetId: string) => {
     if (!plan) return;
     const updated = {
       ...plan,
@@ -83,10 +86,10 @@ export default function WeekPage() {
       }
     };
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleDeleteZora = useCallback((contentId: string) => {
+  const handleDeleteZora = useCallback(async (contentId: string) => {
     if (!plan) return;
     const updated = {
       ...plan,
@@ -97,10 +100,10 @@ export default function WeekPage() {
       }
     };
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
-  const handleDeleteEngagement = useCallback((blockId: string) => {
+  const handleDeleteEngagement = useCallback(async (blockId: string) => {
     if (!plan) return;
     const updated = {
       ...plan,
@@ -111,7 +114,7 @@ export default function WeekPage() {
       }
     };
     setPlan(updated);
-    saveWeekPlan(updated);
+    await saveWeekPlan(updated);
   }, [plan]);
 
   // Export plan as JSON to file system
@@ -138,12 +141,12 @@ export default function WeekPage() {
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       const imported = importWeekPlanFromJSON(content);
       if (imported) {
         setPlan(imported);
-        saveWeekPlan(imported);
+        await saveWeekPlan(imported);
         alert('Plan imported successfully!');
       } else {
         alert('Failed to import plan. Please check the file format.');

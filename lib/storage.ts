@@ -1,6 +1,12 @@
-// TruthOps Content Planner - localStorage utilities
+// TruthOps Content Planner - Storage utilities (Supabase with localStorage fallback)
 
 import { WeekPlan, TweetItem, ZoraContent, EngagementBlock } from './types';
+import { 
+  saveWeekPlanToSupabase, 
+  loadWeekPlanFromSupabase, 
+  clearWeekPlanFromSupabase,
+  isSupabaseAvailable 
+} from './supabase';
 
 const STORAGE_KEY = 'truthops_week_plan';
 
@@ -12,11 +18,27 @@ export function generateId(): string {
 }
 
 /**
- * Save week plan to localStorage
+ * Save week plan (to Supabase if available, otherwise localStorage)
  */
-export function saveWeekPlan(plan: WeekPlan): void {
+export async function saveWeekPlan(plan: WeekPlan): Promise<void> {
+  const updated = { ...plan, updatedAt: new Date().toISOString() };
+  
+  // Try Supabase first
+  if (isSupabaseAvailable()) {
+    const success = await saveWeekPlanToSupabase(updated);
+    if (success) {
+      // Also save to localStorage as backup
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (err) {
+        // Ignore localStorage errors if Supabase works
+      }
+      return;
+    }
+  }
+  
+  // Fallback to localStorage
   try {
-    const updated = { ...plan, updatedAt: new Date().toISOString() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch (err) {
     console.error('Failed to save week plan:', err);
@@ -24,9 +46,24 @@ export function saveWeekPlan(plan: WeekPlan): void {
 }
 
 /**
- * Load week plan from localStorage
+ * Load week plan (from Supabase if available, otherwise localStorage)
  */
-export function loadWeekPlan(): WeekPlan | null {
+export async function loadWeekPlan(): Promise<WeekPlan | null> {
+  // Try Supabase first
+  if (isSupabaseAvailable()) {
+    const plan = await loadWeekPlanFromSupabase();
+    if (plan) {
+      // Also sync to localStorage as backup
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
+      } catch (err) {
+        // Ignore localStorage errors
+      }
+      return plan;
+    }
+  }
+  
+  // Fallback to localStorage
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
@@ -38,9 +75,15 @@ export function loadWeekPlan(): WeekPlan | null {
 }
 
 /**
- * Clear week plan from localStorage
+ * Clear week plan (from Supabase if available, otherwise localStorage)
  */
-export function clearWeekPlan(): void {
+export async function clearWeekPlan(): Promise<void> {
+  // Try Supabase first
+  if (isSupabaseAvailable()) {
+    await clearWeekPlanFromSupabase();
+  }
+  
+  // Also clear localStorage
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (err) {
