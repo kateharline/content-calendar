@@ -14,8 +14,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TruthOps Content Planner",
-  description: "Weekly content visualization and planning for Twitter and Zora",
+  title: "Frequency Content Suite",
+  description: "Instagram carousel publishing for the Frequency wellness brand",
 };
 
 export default function RootLayout({

@@ -1,7 +1,7 @@
-// TruthOps Content Planner - Supabase client
+// Frequency Content Publishing Suite - Supabase client
 
 import { createClient } from '@supabase/supabase-js';
-import { WeekPlan } from './types';
+import { ArcPlan } from './types';
 
 // Supabase client - will be null if env vars aren't set (falls back to localStorage)
 let supabaseClient: ReturnType<typeof createClient> | null = null;
@@ -27,45 +27,43 @@ export function isSupabaseAvailable(): boolean {
 }
 
 // Database table name
-const TABLE_NAME = 'week_plans';
+const TABLE_NAME = 'arc_plans';
 
-// Helper to convert WeekPlan to database format
-function weekPlanToDb(plan: WeekPlan) {
+// Helper to convert ArcPlan to database format
+function arcPlanToDb(plan: ArcPlan) {
   return {
     id: plan.id,
     created_at: plan.createdAt,
     updated_at: plan.updatedAt,
-    week_of: plan.weekOf,
-    tweet_schedule_raw: plan.tweetScheduleRaw,
-    voice_activation_raw: plan.voiceActivationRaw,
-    artifact_raw: plan.artifactRaw,
-    parsed_data: plan.parsed, // Store the entire parsed object as JSONB
+    arc_name: plan.arcName,
+    start_date: plan.startDate,
+    posts_data: plan.posts,
   };
 }
 
-// Helper to convert database format to WeekPlan
-function dbToWeekPlan(row: any): WeekPlan {
+// Helper to convert database format to ArcPlan
+function dbToArcPlan(row: any): ArcPlan {
   return {
     id: row.id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    weekOf: row.week_of,
-    tweetScheduleRaw: row.tweet_schedule_raw,
-    voiceActivationRaw: row.voice_activation_raw,
-    artifactRaw: row.artifact_raw,
-    parsed: row.parsed_data,
+    arcName: row.arc_name,
+    startDate: row.start_date,
+    igAccountId: null,
+    igAccessToken: null,
+    posts: row.posts_data || [],
   };
 }
 
 /**
- * Save week plan to Supabase
+ * Save arc plan to Supabase
  */
-export async function saveWeekPlanToSupabase(plan: WeekPlan): Promise<boolean> {
+export async function saveArcPlanToSupabase(plan: ArcPlan): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
   try {
-    const dbData = weekPlanToDb(plan);
+    const dbData = arcPlanToDb(plan);
     const { error } = await client
       .from(TABLE_NAME)
       .upsert(dbData as any, { onConflict: 'id' });
@@ -82,9 +80,9 @@ export async function saveWeekPlanToSupabase(plan: WeekPlan): Promise<boolean> {
 }
 
 /**
- * Load week plan from Supabase (gets the most recent one)
+ * Load arc plan from Supabase (gets the most recent one)
  */
-export async function loadWeekPlanFromSupabase(): Promise<WeekPlan | null> {
+export async function loadArcPlanFromSupabase(): Promise<ArcPlan | null> {
   const client = getSupabaseClient();
   if (!client) return null;
 
@@ -98,14 +96,13 @@ export async function loadWeekPlanFromSupabase(): Promise<WeekPlan | null> {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // No rows found
         return null;
       }
       console.error('Failed to load from Supabase:', error);
       return null;
     }
 
-    return dbToWeekPlan(data);
+    return dbToArcPlan(data);
   } catch (err) {
     console.error('Error loading from Supabase:', err);
     return null;
@@ -113,14 +110,13 @@ export async function loadWeekPlanFromSupabase(): Promise<WeekPlan | null> {
 }
 
 /**
- * Clear week plan from Supabase (delete the most recent one)
+ * Clear arc plan from Supabase
  */
-export async function clearWeekPlanFromSupabase(): Promise<boolean> {
+export async function clearArcPlanFromSupabase(): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
   try {
-    // Get the most recent plan
     const { data } = await client
       .from(TABLE_NAME)
       .select('id')
@@ -128,7 +124,7 @@ export async function clearWeekPlanFromSupabase(): Promise<boolean> {
       .limit(1)
       .single() as any;
 
-    if (!data) return true; // Nothing to delete
+    if (!data) return true;
 
     const { error } = await client
       .from(TABLE_NAME)
@@ -143,5 +139,61 @@ export async function clearWeekPlanFromSupabase(): Promise<boolean> {
   } catch (err) {
     console.error('Error deleting from Supabase:', err);
     return false;
+  }
+}
+
+/**
+ * Save Instagram credentials to Supabase
+ */
+export async function saveIgCredentials(accountId: string, accessToken: string, username?: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client
+      .from('ig_credentials')
+      .upsert({
+        id: 'default',
+        ig_account_id: accountId,
+        ig_access_token: accessToken,
+        ig_username: username || null,
+        updated_at: new Date().toISOString(),
+      } as any, { onConflict: 'id' });
+
+    if (error) {
+      console.error('Failed to save IG credentials:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Error saving IG credentials:', err);
+    return false;
+  }
+}
+
+/**
+ * Load Instagram credentials from Supabase
+ */
+export async function loadIgCredentials(): Promise<{ accountId: string; accessToken: string; username: string | null } | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client
+      .from('ig_credentials')
+      .select('*')
+      .eq('id', 'default')
+      .single() as any;
+
+    if (error || !data) return null;
+
+    return {
+      accountId: data.ig_account_id,
+      accessToken: data.ig_access_token,
+      username: data.ig_username,
+    };
+  } catch (err) {
+    console.error('Error loading IG credentials:', err);
+    return null;
   }
 }

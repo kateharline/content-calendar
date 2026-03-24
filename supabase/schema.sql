@@ -1,38 +1,39 @@
--- TruthOps Content Planner - Supabase Database Schema
+-- Frequency Content Publishing Suite - Supabase Database Schema
 -- Run this in your Supabase SQL Editor
 
--- Create the week_plans table
-CREATE TABLE IF NOT EXISTS week_plans (
+-- Drop old table (from previous TruthOps version)
+-- DROP TABLE IF EXISTS week_plans;
+
+-- Arc plans (replaces week_plans)
+CREATE TABLE IF NOT EXISTS arc_plans (
   id TEXT PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  week_of TEXT NOT NULL,
-  tweet_schedule_raw TEXT NOT NULL DEFAULT '',
-  voice_activation_raw TEXT NOT NULL DEFAULT '',
-  artifact_raw TEXT NOT NULL DEFAULT '',
-  parsed_data JSONB NOT NULL DEFAULT '{}'::jsonb
+  arc_name TEXT NOT NULL,
+  start_date DATE,
+  posts_data JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 -- Create an index on updated_at for faster queries
-CREATE INDEX IF NOT EXISTS idx_week_plans_updated_at ON week_plans(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_arc_plans_updated_at ON arc_plans(updated_at DESC);
 
--- Enable Row Level Security (RLS)
-ALTER TABLE week_plans ENABLE ROW LEVEL SECURITY;
+-- Instagram credentials (separate for security)
+CREATE TABLE IF NOT EXISTS ig_credentials (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  ig_account_id TEXT,
+  ig_access_token TEXT,
+  ig_username TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- Create a policy that allows all operations for authenticated users
--- For a simple setup, we'll allow all operations (you can restrict this later)
-CREATE POLICY "Allow all operations" ON week_plans
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
+-- Enable RLS
+ALTER TABLE arc_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ig_credentials ENABLE ROW LEVEL SECURITY;
 
--- Alternative: If you want to use anon key without auth, use this policy instead:
--- CREATE POLICY "Allow all operations for anon" ON week_plans
---   FOR ALL
---   USING (true)
---   WITH CHECK (true);
+CREATE POLICY "Allow all" ON arc_plans FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON ig_credentials FOR ALL USING (true) WITH CHECK (true);
 
--- Create a function to automatically update updated_at timestamp
+-- Auto-update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -41,8 +42,17 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Create trigger to automatically update updated_at
-CREATE TRIGGER update_week_plans_updated_at
-  BEFORE UPDATE ON week_plans
+CREATE TRIGGER update_arc_plans_updated_at
+  BEFORE UPDATE ON arc_plans
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_ig_credentials_updated_at
+  BEFORE UPDATE ON ig_credentials
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Create storage bucket for images
+-- (Run this in Supabase Dashboard > Storage > New Bucket)
+-- Name: carousel-images
+-- Public: Yes (required for Instagram API to access images)

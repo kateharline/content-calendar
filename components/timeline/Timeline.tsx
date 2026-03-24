@@ -1,196 +1,100 @@
 'use client';
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { 
-  WeekPlan, 
-  TweetItem, 
-  ZoraContent, 
-  EngagementBlock,
-  DayOfWeek, 
-  DAY_ORDER, 
-  DAY_FULL_NAMES,
+import {
+  ArcPlan,
+  InstagramPost,
+  arcDayToDate,
+  generateId,
 } from '@/lib/types';
-import { timeToMinutes } from '@/lib/parser';
-import { TweetCard } from '@/components/cards/TweetCard';
-import { ZoraCard } from '@/components/cards/ZoraCard';
-import { EngagementCard } from '@/components/cards/EngagementCard';
-import { generateId } from '@/lib/storage';
+import { PostCard } from '@/components/cards/PostCard';
 
 interface TimelineProps {
-  plan: WeekPlan;
-  onUpdateTweet: (tweetId: string, updates: Partial<TweetItem>) => void;
-  onUpdateZora: (contentId: string, updates: Partial<ZoraContent>) => void;
-  onUpdateEngagement: (blockId: string, updates: Partial<EngagementBlock>) => void;
-  onAddTweet?: (tweet: TweetItem) => void;
-  onAddZora?: (content: ZoraContent) => void;
-  onDeleteTweet?: (tweetId: string) => void;
-  onDeleteZora?: (contentId: string) => void;
-  onDeleteEngagement?: (blockId: string) => void;
+  plan: ArcPlan;
+  onUpdatePost: (postId: string, updates: Partial<InstagramPost>) => void;
+  onDeletePost?: (postId: string) => void;
+  onPublishPost?: (postId: string) => void;
+  onImageUpload?: (postId: string, files: File[]) => void;
+  onAddPost?: (post: InstagramPost) => void;
 }
 
-interface ContentItem {
-  id: string;
-  type: 'zora' | 'tweet' | 'engagement';
-  data: ZoraContent | TweetItem | EngagementBlock;
-  time: string | null;
-  day: DayOfWeek;
+interface DayGroup {
+  dayNumber: number;
+  date: Date;
+  dateStr: string;
+  middayPost: InstagramPost | null;
+  eveningPost: InstagramPost | null;
 }
 
-export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement, onAddTweet, onAddZora, onDeleteTweet, onDeleteZora, onDeleteEngagement }: TimelineProps) {
+export function Timeline({
+  plan,
+  onUpdatePost,
+  onDeletePost,
+  onPublishPost,
+  onImageUpload,
+  onAddPost,
+}: TimelineProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ day: DayOfWeek; index: number } | null>(null);
-  const [hoveredGap, setHoveredGap] = useState<{ day: DayOfWeek; index: number } | null>(null);
-  
+  const [hoveredGap, setHoveredGap] = useState<{ day: number; type: 'midday' | 'evening' } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const dayRefs = useRef<Map<DayOfWeek, HTMLDivElement>>(new Map());
 
-  // Parse week start date
-  const weekStartDate = useMemo(() => {
-    try {
-      const weekOfStr = plan.weekOf || plan.parsed?.metadata?.weekOf || '';
-      const dateMatch = weekOfStr.match(/(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\w+)\s+(\d+)/i);
-      if (dateMatch) {
-        const month = dateMatch[1];
-        const day = parseInt(dateMatch[2]);
-        const yearMatch = weekOfStr.match(/(\d{4})/);
-        const year = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear();
-        return new Date(`${month} ${day}, ${year}`);
-      }
-      return new Date();
-    } catch {
-      return new Date();
-    }
-  }, [plan.weekOf, plan.parsed?.metadata?.weekOf]);
-
-  // Flatten all items with their day
-  const allItems = useMemo(() => {
-    const items: ContentItem[] = [];
-    
-    plan.parsed.tweets.forEach(tweet => {
-      items.push({ id: tweet.id, type: 'tweet', data: tweet, time: tweet.time, day: tweet.day });
-    });
-    plan.parsed.engagementBlocks.forEach(block => {
-      items.push({ id: block.id, type: 'engagement', data: block, time: block.startTime, day: block.day });
-    });
-    plan.parsed.zoraContent.forEach(content => {
-      items.push({ id: content.id, type: 'zora', data: content, time: content.time, day: content.day });
-    });
-    
-    return items;
-  }, [plan.parsed]);
-
-  // Group items by day
+  // Group posts by day
   const dayGroups = useMemo(() => {
-    const groups: Map<DayOfWeek, { day: DayOfWeek; date: string; items: ContentItem[] }> = new Map();
-    const daysWithContent = new Set<DayOfWeek>();
-    
-    allItems.forEach(item => daysWithContent.add(item.day));
-    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(d => daysWithContent.add(d as DayOfWeek));
+    const groups: Map<number, DayGroup> = new Map();
 
-    DAY_ORDER.forEach((day, index) => {
-      if (daysWithContent.has(day)) {
-        const dayDate = new Date(weekStartDate);
-        dayDate.setDate(weekStartDate.getDate() + index);
-        const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        groups.set(day, { day, date: dateStr, items: [] });
-      }
-    });
+    // Find all day numbers present in posts
+    const dayNumbers = new Set<number>();
+    plan.posts.forEach(post => dayNumbers.add(post.day));
 
-    allItems.forEach(item => {
-      const group = groups.get(item.day);
-      if (group) group.items.push(item);
-    });
+    // Ensure at least days 1-21 if we have a plan
+    for (let i = 1; i <= 21; i++) {
+      dayNumbers.add(i);
+    }
 
-    groups.forEach(group => {
-      group.items.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+    // Create groups
+    Array.from(dayNumbers).sort((a, b) => a - b).forEach(dayNum => {
+      const date = arcDayToDate(dayNum, plan.startDate);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+      groups.set(dayNum, {
+        dayNumber: dayNum,
+        date,
+        dateStr,
+        middayPost: plan.posts.find(p => p.day === dayNum && p.type === 'midday') || null,
+        eveningPost: plan.posts.find(p => p.day === dayNum && p.type === 'evening') || null,
+      });
     });
 
     return Array.from(groups.values());
-  }, [allItems, weekStartDate]);
+  }, [plan.posts, plan.startDate]);
 
-  // Find dragging item
-  const draggingItem = useMemo(() => {
+  // Find dragging post
+  const draggingPost = useMemo(() => {
     if (!draggingId) return null;
-    return allItems.find(i => i.id === draggingId) || null;
-  }, [draggingId, allItems]);
+    return plan.posts.find(p => p.id === draggingId) || null;
+  }, [draggingId, plan.posts]);
 
-  // Time helpers
-  const minutesToTimeStr = (minutes: number): string => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-  };
-
-  // Calculate drop target from mouse position
-  const calculateDropTarget = useCallback((clientY: number) => {
-    if (!containerRef.current) return null;
-
-    for (const group of dayGroups) {
-      const dayEl = dayRefs.current.get(group.day);
-      if (!dayEl) continue;
-
-      const dayRect = dayEl.getBoundingClientRect();
-      if (clientY < dayRect.top - 50 || clientY > dayRect.bottom + 50) continue;
-
-      // Get items excluding the dragging one
-      const items = group.items.filter(i => i.id !== draggingId);
-      
-      // Check before first item
-      if (items.length === 0) {
-        return { day: group.day, index: 0 };
-      }
-
-      const firstCard = cardRefs.current.get(items[0].id);
-      if (firstCard) {
-        const rect = firstCard.getBoundingClientRect();
-        if (clientY < rect.top + rect.height / 2) {
-          return { day: group.day, index: 0 };
-        }
-      }
-
-      // Check between items
-      for (let i = 0; i < items.length; i++) {
-        const card = cardRefs.current.get(items[i].id);
-        if (!card) continue;
-        
-        const rect = card.getBoundingClientRect();
-        const midpoint = rect.top + rect.height / 2;
-        
-        if (clientY < midpoint) {
-          return { day: group.day, index: i };
-        }
-      }
-
-      // After last item
-      return { day: group.day, index: items.length };
-    }
-    return null;
-  }, [dayGroups, draggingId]);
-
-  // Mouse handlers
+  // Mouse handlers for drag
   const handleMouseDown = useCallback((e: React.MouseEvent, id: string) => {
-    // Don't start drag if clicking on interactive elements
     const target = e.target as HTMLElement;
-    
-    // Check for interactive elements
     if (target.closest('button, input, textarea, a, [contenteditable], select')) return;
-    
-    // Check for elements with cursor-text or cursor-pointer classes (editable fields)
+
     let el: HTMLElement | null = target;
     while (el) {
       const classes = el.className || '';
       if (typeof classes === 'string' && (
-        classes.includes('cursor-text') || 
+        classes.includes('cursor-text') ||
         classes.includes('cursor-pointer') ||
         el.getAttribute('data-no-drag') !== null
       )) {
-        return; // Don't start drag
+        return;
       }
       el = el.parentElement;
     }
-    
+
     e.preventDefault();
     setDraggingId(id);
     setDragPos({ x: e.clientX, y: e.clientY });
@@ -199,50 +103,13 @@ export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!draggingId) return;
     setDragPos({ x: e.clientX, y: e.clientY });
-    const target = calculateDropTarget(e.clientY);
-    setDropTarget(target);
-  }, [draggingId, calculateDropTarget]);
+  }, [draggingId]);
 
   const handleMouseUp = useCallback(() => {
-    if (draggingId && dropTarget && draggingItem) {
-      // Calculate new time
-      const group = dayGroups.find(g => g.day === dropTarget.day);
-      if (group) {
-        const otherItems = group.items.filter(i => i.id !== draggingId);
-        const prevItem = dropTarget.index > 0 ? otherItems[dropTarget.index - 1] : null;
-        const nextItem = dropTarget.index < otherItems.length ? otherItems[dropTarget.index] : null;
-        
-        let newTime: string;
-        if (!prevItem && !nextItem) {
-          newTime = '09:00';
-        } else if (!prevItem && nextItem) {
-          const t = timeToMinutes(nextItem.time);
-          newTime = minutesToTimeStr(Math.max(420, t - 30));
-        } else if (prevItem && !nextItem) {
-          const t = timeToMinutes(prevItem.time);
-          newTime = minutesToTimeStr(Math.min(1320, t + 30));
-        } else {
-          const t1 = timeToMinutes(prevItem!.time);
-          const t2 = timeToMinutes(nextItem!.time);
-          newTime = minutesToTimeStr(Math.round((t1 + t2) / 2 / 15) * 15);
-        }
-
-        if (draggingItem.type === 'tweet') {
-          onUpdateTweet(draggingItem.id, { day: dropTarget.day, time: newTime });
-        } else if (draggingItem.type === 'zora') {
-          onUpdateZora(draggingItem.id, { day: dropTarget.day, time: newTime });
-        } else if (draggingItem.type === 'engagement') {
-          onUpdateEngagement(draggingItem.id, { day: dropTarget.day, startTime: newTime });
-        }
-      }
-    }
-    
     setDraggingId(null);
     setDragPos(null);
-    setDropTarget(null);
-  }, [draggingId, dropTarget, draggingItem, dayGroups, onUpdateTweet, onUpdateZora, onUpdateEngagement]);
+  }, []);
 
-  // Global mouse listeners
   useEffect(() => {
     if (draggingId) {
       window.addEventListener('mousemove', handleMouseMove);
@@ -258,190 +125,165 @@ export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement
     }
   }, [draggingId, handleMouseMove, handleMouseUp]);
 
-  // Add handlers
-  const handleAddTweet = (day: DayOfWeek, time: string) => {
-    if (!onAddTweet) return;
-    onAddTweet({
+  const handleAddPost = (dayNumber: number, type: 'midday' | 'evening') => {
+    if (!onAddPost) return;
+    onAddPost({
       id: generateId(),
-      day,
-      time,
-      text: 'New tweet...',
+      day: dayNumber,
+      dayOfWeek: arcDayToDate(dayNumber, plan.startDate).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3) as any,
+      type,
+      title: `Day ${dayNumber} — ${type === 'midday' ? 'Midday' : 'Evening'}`,
+      caption: '',
+      images: [],
+      scheduledTime: null,
       status: 'draft',
-      platform: 'twitter'
+      igContainerId: null,
+      igMediaId: null,
+      igPermalink: null,
+      publishedAt: null,
+      errorMessage: null,
     });
   };
 
-  const handleAddZora = (day: DayOfWeek, time: string) => {
-    if (!onAddZora) return;
-    onAddZora({
-      id: generateId(),
-      type: 'image',
-      day,
-      time,
-      ticker: null,
-      title: 'New Zora Post',
-      description: '',
-      revePrompt: '',
-      status: 'prompt'
-    });
+  // Get arc day title from posts
+  const getDayTitle = (dayNum: number) => {
+    const posts = plan.posts.filter(p => p.day === dayNum);
+    if (posts.length > 0) {
+      // Extract the day title portion (e.g., "The Map" from "Day 1: The Map — Midday")
+      const title = posts[0].title;
+      const match = title.match(/Day \d+:?\s*(.+?)(?:\s*[—–-]\s*(?:Midday|Evening))?$/i);
+      if (match) return match[1].trim();
+    }
+    return '';
   };
 
-  const getMidpointTime = (prevItem: ContentItem | null, nextItem: ContentItem | null): string => {
-    if (!prevItem && !nextItem) return '09:00';
-    if (!prevItem) {
-      const t = timeToMinutes(nextItem!.time);
-      return minutesToTimeStr(Math.max(420, t - 30));
-    }
-    if (!nextItem) {
-      const t = timeToMinutes(prevItem.time);
-      return minutesToTimeStr(Math.min(1320, t + 30));
-    }
-    const t1 = timeToMinutes(prevItem.time);
-    const t2 = timeToMinutes(nextItem.time);
-    return minutesToTimeStr(Math.round((t1 + t2) / 2 / 15) * 15);
-  };
-
-  // Check if a position should show a gap
-  const shouldShowGap = (day: DayOfWeek, index: number) => {
-    return dropTarget?.day === day && dropTarget?.index === index;
-  };
+  // Only show days that have posts (or first 21)
+  const visibleDays = dayGroups.filter(g => g.middayPost || g.eveningPost || g.dayNumber <= 21);
 
   return (
     <div ref={containerRef} className="flex gap-4">
       {/* Rainbow timeline bar */}
       <div className="flex-shrink-0 w-6">
         <div className="sticky top-20">
-          <div 
+          <div
             className={`
               w-1.5 rounded-full transition-all duration-300
-              bg-gradient-to-b from-blue-400 via-violet-400 to-pink-400
+              bg-gradient-to-b from-pink-400 via-purple-400 to-indigo-400
               ${draggingId ? 'opacity-100' : 'opacity-40'}
             `}
-            style={{ height: `${Math.max(400, dayGroups.length * 180)}px` }}
+            style={{ height: `${Math.max(400, visibleDays.length * 200)}px` }}
           />
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 space-y-8">
-        {dayGroups.map((group) => {
-          const items = group.items.filter(i => i.id !== draggingId);
-          
+        {visibleDays.map((group) => {
+          const dayTitle = getDayTitle(group.dayNumber);
+
           return (
-            <div 
-              key={group.day} 
-              ref={el => { if (el) dayRefs.current.set(group.day, el); }}
-              className="space-y-2"
-            >
+            <div key={group.dayNumber} className="space-y-3">
               {/* Day Header */}
               <div className="sticky top-16 z-10 bg-gradient-to-b from-[#fafaf9] via-[#fafaf9] to-transparent pb-2 pt-2">
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-2xl font-semibold text-gray-900">{DAY_FULL_NAMES[group.day]}</h2>
-                  <span className="text-sm text-gray-400">{group.date}</span>
+                  <h2 className="text-2xl font-semibold text-gray-900">
+                    Day {group.dayNumber}
+                  </h2>
+                  {dayTitle && (
+                    <span className="text-lg text-gray-500">{dayTitle}</span>
+                  )}
+                  <span className="text-sm text-gray-400">{group.dateStr}</span>
                 </div>
               </div>
 
-              {/* Items */}
+              {/* Midday Post */}
               <div className="space-y-2">
-                {/* Gap at start - always show hoverable area */}
-                <div 
-                  className="h-12 my-2 transition-all duration-200"
-                  onMouseEnter={() => !draggingId && setHoveredGap({ day: group.day, index: 0 })}
-                  onMouseLeave={() => setHoveredGap(null)}
-                >
-                  {!draggingId && hoveredGap?.day === group.day && hoveredGap?.index === 0 && (onAddTweet || onAddZora) && (
-                    <div className="h-full flex items-center justify-end pr-4">
-                      <div className="flex gap-1">
-                        {onAddTweet && (
-                          <button
-                            onClick={() => handleAddTweet(group.day, items.length > 0 ? getMidpointTime(null, items[0]) : '09:00')}
-                            className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-100 hover:text-blue-600 rounded-full"
-                          >
-                            + Tweet
-                          </button>
-                        )}
-                        {onAddZora && (
-                          <button
-                            onClick={() => handleAddZora(group.day, items.length > 0 ? getMidpointTime(null, items[0]) : '09:00')}
-                            className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-violet-100 hover:text-violet-600 rounded-full"
-                          >
-                            + Zora
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Midday</span>
                 </div>
-
-                {items.length === 0 ? (
-                  <div className="py-8 border border-dashed border-gray-200 rounded-xl text-center text-gray-400">
-                    No content scheduled
+                {group.middayPost ? (
+                  <div
+                    ref={el => { if (el && group.middayPost) cardRefs.current.set(group.middayPost.id, el); }}
+                    onMouseDown={(e) => group.middayPost && handleMouseDown(e, group.middayPost.id)}
+                    className="max-w-2xl cursor-grab"
+                  >
+                    <PostCard
+                      post={group.middayPost}
+                      onUpdate={(updates) => onUpdatePost(group.middayPost!.id, updates)}
+                      onDelete={onDeletePost ? () => onDeletePost(group.middayPost!.id) : undefined}
+                      onPublish={onPublishPost ? () => onPublishPost(group.middayPost!.id) : undefined}
+                      onImageUpload={onImageUpload ? (files) => onImageUpload(group.middayPost!.id, files) : undefined}
+                      isDragging={draggingId === group.middayPost.id}
+                    />
                   </div>
                 ) : (
-                  items.map((item, index) => (
-                    <div key={item.id}>
-                      <div
-                        ref={el => { if (el) cardRefs.current.set(item.id, el); }}
-                        onMouseDown={(e) => handleMouseDown(e, item.id)}
-                        className={`
-                          transition-all duration-150 cursor-grab
-                          ${item.type === 'zora' ? 'max-w-md' : 'max-w-xl'}
-                        `}
+                  <div
+                    className="max-w-2xl"
+                    onMouseEnter={() => setHoveredGap({ day: group.dayNumber, type: 'midday' })}
+                    onMouseLeave={() => setHoveredGap(null)}
+                  >
+                    {hoveredGap?.day === group.dayNumber && hoveredGap?.type === 'midday' && onAddPost ? (
+                      <button
+                        onClick={() => handleAddPost(group.dayNumber, 'midday')}
+                        className="w-full py-4 border border-dashed border-gray-300 hover:border-amber-400 rounded-xl text-gray-400 hover:text-amber-600 text-sm transition-colors"
                       >
-                        {item.type === 'zora' && (
-                          <ZoraCard
-                            content={item.data as ZoraContent}
-                            onUpdate={(updates) => onUpdateZora(item.id, updates)}
-                            onDelete={onDeleteZora ? () => onDeleteZora(item.id) : undefined}
-                          />
-                        )}
-                        {item.type === 'tweet' && (
-                          <TweetCard
-                            tweet={item.data as TweetItem}
-                            onUpdate={(updates) => onUpdateTweet(item.id, updates)}
-                            onDelete={onDeleteTweet ? () => onDeleteTweet(item.id) : undefined}
-                          />
-                        )}
-                        {item.type === 'engagement' && (
-                          <EngagementCard
-                            block={item.data as EngagementBlock}
-                            onUpdate={(updates) => onUpdateEngagement(item.id, updates)}
-                            onDelete={onDeleteEngagement ? () => onDeleteEngagement(item.id) : undefined}
-                          />
-                        )}
+                        + Add Midday Post
+                      </button>
+                    ) : (
+                      <div className="py-4 border border-dashed border-gray-200 rounded-xl text-center text-gray-300 text-sm">
+                        No midday post
                       </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                      {/* Gap after this item - always show hoverable area */}
-                      <div 
-                        className="h-12 my-2 transition-all duration-200"
-                        onMouseEnter={() => !draggingId && setHoveredGap({ day: group.day, index: index + 1 })}
-                        onMouseLeave={() => setHoveredGap(null)}
+              {/* Visual separator */}
+              <div className="pl-4">
+                <div className="w-px h-4 bg-gray-200 ml-0.5" />
+              </div>
+
+              {/* Evening Post */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="w-2 h-2 rounded-full bg-purple-400" />
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Evening</span>
+                </div>
+                {group.eveningPost ? (
+                  <div
+                    ref={el => { if (el && group.eveningPost) cardRefs.current.set(group.eveningPost.id, el); }}
+                    onMouseDown={(e) => group.eveningPost && handleMouseDown(e, group.eveningPost.id)}
+                    className="max-w-2xl cursor-grab"
+                  >
+                    <PostCard
+                      post={group.eveningPost}
+                      onUpdate={(updates) => onUpdatePost(group.eveningPost!.id, updates)}
+                      onDelete={onDeletePost ? () => onDeletePost(group.eveningPost!.id) : undefined}
+                      onPublish={onPublishPost ? () => onPublishPost(group.eveningPost!.id) : undefined}
+                      onImageUpload={onImageUpload ? (files) => onImageUpload(group.eveningPost!.id, files) : undefined}
+                      isDragging={draggingId === group.eveningPost.id}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="max-w-2xl"
+                    onMouseEnter={() => setHoveredGap({ day: group.dayNumber, type: 'evening' })}
+                    onMouseLeave={() => setHoveredGap(null)}
+                  >
+                    {hoveredGap?.day === group.dayNumber && hoveredGap?.type === 'evening' && onAddPost ? (
+                      <button
+                        onClick={() => handleAddPost(group.dayNumber, 'evening')}
+                        className="w-full py-4 border border-dashed border-gray-300 hover:border-purple-400 rounded-xl text-gray-400 hover:text-purple-600 text-sm transition-colors"
                       >
-                        {!draggingId && hoveredGap?.day === group.day && hoveredGap?.index === index + 1 && (onAddTweet || onAddZora) && (
-                          <div className="h-full flex items-center justify-end pr-4">
-                            <div className="flex gap-1">
-                              {onAddTweet && (
-                                <button
-                                  onClick={() => handleAddTweet(group.day, getMidpointTime(item, items[index + 1] || null))}
-                                  className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-100 hover:text-blue-600 rounded-full"
-                                >
-                                  + Tweet
-                                </button>
-                              )}
-                              {onAddZora && (
-                                <button
-                                  onClick={() => handleAddZora(group.day, getMidpointTime(item, items[index + 1] || null))}
-                                  className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-violet-100 hover:text-violet-600 rounded-full"
-                                >
-                                  + Zora
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                        + Add Evening Post
+                      </button>
+                    ) : (
+                      <div className="py-4 border border-dashed border-gray-200 rounded-xl text-center text-gray-300 text-sm">
+                        No evening post
                       </div>
-                    </div>
-                  ))
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -450,35 +292,22 @@ export function Timeline({ plan, onUpdateTweet, onUpdateZora, onUpdateEngagement
       </div>
 
       {/* Floating drag preview */}
-      {draggingId && dragPos && draggingItem && (
+      {draggingId && dragPos && draggingPost && (
         <div
           className="fixed pointer-events-none z-50 shadow-2xl rounded-xl"
           style={{
-            left: dragPos.x - 150,
+            left: dragPos.x - 200,
             top: dragPos.y - 30,
-            width: draggingItem.type === 'zora' ? '380px' : '500px',
+            width: '500px',
             opacity: 0.95,
             transform: 'rotate(-1deg)',
           }}
         >
-          {draggingItem.type === 'zora' && (
-            <ZoraCard
-              content={draggingItem.data as ZoraContent}
-              onUpdate={() => {}}
-            />
-          )}
-          {draggingItem.type === 'tweet' && (
-            <TweetCard
-              tweet={draggingItem.data as TweetItem}
-              onUpdate={() => {}}
-            />
-          )}
-          {draggingItem.type === 'engagement' && (
-            <EngagementCard
-              block={draggingItem.data as EngagementBlock}
-              onUpdate={() => {}}
-            />
-          )}
+          <PostCard
+            post={draggingPost}
+            onUpdate={() => {}}
+            isDragging
+          />
         </div>
       )}
     </div>

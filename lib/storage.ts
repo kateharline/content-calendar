@@ -1,33 +1,25 @@
-// TruthOps Content Planner - Storage utilities (Supabase with localStorage fallback)
+// Frequency Content Publishing Suite - Storage utilities (Supabase with localStorage fallback)
 
-import { WeekPlan, TweetItem, ZoraContent, EngagementBlock } from './types';
-import { 
-  saveWeekPlanToSupabase, 
-  loadWeekPlanFromSupabase, 
-  clearWeekPlanFromSupabase,
-  isSupabaseAvailable 
+import { ArcPlan, InstagramPost, generateId } from './types';
+import {
+  saveArcPlanToSupabase,
+  loadArcPlanFromSupabase,
+  clearArcPlanFromSupabase,
+  isSupabaseAvailable
 } from './supabase';
 
-const STORAGE_KEY = 'truthops_week_plan';
+const STORAGE_KEY = 'frequency_arc_plan';
 
 /**
- * Generate a unique ID
+ * Save arc plan (to Supabase if available, otherwise localStorage)
  */
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
- * Save week plan (to Supabase if available, otherwise localStorage)
- */
-export async function saveWeekPlan(plan: WeekPlan): Promise<void> {
+export async function saveArcPlan(plan: ArcPlan): Promise<void> {
   const updated = { ...plan, updatedAt: new Date().toISOString() };
-  
+
   // Try Supabase first
   if (isSupabaseAvailable()) {
-    const success = await saveWeekPlanToSupabase(updated);
+    const success = await saveArcPlanToSupabase(updated);
     if (success) {
-      // Also save to localStorage as backup
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (err) {
@@ -36,200 +28,157 @@ export async function saveWeekPlan(plan: WeekPlan): Promise<void> {
       return;
     }
   }
-  
+
   // Fallback to localStorage
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch (err) {
-    console.error('Failed to save week plan:', err);
+    console.error('Failed to save arc plan:', err);
   }
 }
 
 /**
- * Load week plan (from Supabase if available, otherwise localStorage)
+ * Load arc plan (from Supabase if available, otherwise localStorage)
  */
-export async function loadWeekPlan(): Promise<WeekPlan | null> {
+export async function loadArcPlan(): Promise<ArcPlan | null> {
   // Try Supabase first
   if (isSupabaseAvailable()) {
-    const plan = await loadWeekPlanFromSupabase();
+    const plan = await loadArcPlanFromSupabase();
     if (plan) {
-      // Also sync to localStorage as backup
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
       } catch (err) {
-        // Ignore localStorage errors
+        // Ignore
       }
       return plan;
     }
   }
-  
+
   // Fallback to localStorage
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
-    return JSON.parse(stored) as WeekPlan;
+    return JSON.parse(stored) as ArcPlan;
   } catch (err) {
-    console.error('Failed to load week plan:', err);
+    console.error('Failed to load arc plan:', err);
     return null;
   }
 }
 
 /**
- * Clear week plan (from Supabase if available, otherwise localStorage)
+ * Clear arc plan
  */
-export async function clearWeekPlan(): Promise<void> {
-  // Try Supabase first
+export async function clearArcPlan(): Promise<void> {
   if (isSupabaseAvailable()) {
-    await clearWeekPlanFromSupabase();
+    await clearArcPlanFromSupabase();
   }
-  
-  // Also clear localStorage
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (err) {
-    console.error('Failed to clear week plan:', err);
+    console.error('Failed to clear arc plan:', err);
   }
 }
 
 /**
- * Update a specific tweet
+ * Update a specific post in the plan
  */
-export function updateTweet(plan: WeekPlan, tweetId: string, updates: Partial<TweetItem>): WeekPlan {
+export function updatePost(plan: ArcPlan, postId: string, updates: Partial<InstagramPost>): ArcPlan {
   return {
     ...plan,
     updatedAt: new Date().toISOString(),
-    parsed: {
-      ...plan.parsed,
-      tweets: plan.parsed.tweets.map(t => 
-        t.id === tweetId ? { ...t, ...updates } : t
-      ),
-    },
+    posts: plan.posts.map(p =>
+      p.id === postId ? { ...p, ...updates } : p
+    ),
   };
 }
 
 /**
- * Update a specific Zora content item
+ * Delete a post from the plan
  */
-export function updateZoraContent(plan: WeekPlan, contentId: string, updates: Partial<ZoraContent>): WeekPlan {
+export function deletePost(plan: ArcPlan, postId: string): ArcPlan {
   return {
     ...plan,
     updatedAt: new Date().toISOString(),
-    parsed: {
-      ...plan.parsed,
-      zoraContent: plan.parsed.zoraContent.map(z => 
-        z.id === contentId ? { ...z, ...updates } : z
-      ),
-    },
+    posts: plan.posts.filter(p => p.id !== postId),
   };
 }
 
 /**
- * Update a specific engagement block
+ * Export arc plan as JSON string
  */
-export function updateEngagementBlock(plan: WeekPlan, blockId: string, updates: Partial<EngagementBlock>): WeekPlan {
-  return {
-    ...plan,
-    updatedAt: new Date().toISOString(),
-    parsed: {
-      ...plan.parsed,
-      engagementBlocks: plan.parsed.engagementBlocks.map(e => 
-        e.id === blockId ? { ...e, ...updates } : e
-      ),
-    },
-  };
-}
-
-/**
- * Export week plan as JSON string (includes all updates)
- */
-export function exportWeekPlanAsJSON(plan: WeekPlan): string {
-  // Export everything including all edits, statuses, times, etc.
+export function exportArcPlanAsJSON(plan: ArcPlan): string {
   const exportData = {
-    version: '1.0',
+    version: '2.0',
     exportedAt: new Date().toISOString(),
-    weekOf: plan.weekOf,
-    metadata: plan.parsed.metadata,
-    tweets: plan.parsed.tweets.map(t => ({
-      id: t.id,
-      day: t.day,
-      time: t.time,
-      text: t.text,
-      status: t.status,
-      platform: t.platform,
-    })),
-    engagementBlocks: plan.parsed.engagementBlocks.map(e => ({
-      id: e.id,
-      day: e.day,
-      startTime: e.startTime,
-      endTime: e.endTime,
-      platform: e.platform,
-      targets: e.targets,
-      instructions: e.instructions,
-      profileLinks: e.profileLinks,
-      status: e.status,
-      isSkipped: e.isSkipped,
-      skipReason: e.skipReason,
-    })),
-    zoraContent: plan.parsed.zoraContent.map(z => ({
-      id: z.id,
-      type: z.type,
-      day: z.day,
-      time: z.time,
-      ticker: z.ticker,
-      title: z.title,
-      description: z.description,
-      scriptText: z.scriptText,
-      revePrompt: z.revePrompt,
-      status: z.status,
-      // Note: mediaFile URLs are local blob URLs, not exported
+    arcName: plan.arcName,
+    startDate: plan.startDate,
+    posts: plan.posts.map(p => ({
+      id: p.id,
+      day: p.day,
+      dayOfWeek: p.dayOfWeek,
+      type: p.type,
+      title: p.title,
+      caption: p.caption,
+      images: p.images,
+      scheduledTime: p.scheduledTime,
+      status: p.status,
+      igMediaId: p.igMediaId,
+      igPermalink: p.igPermalink,
+      publishedAt: p.publishedAt,
     })),
   };
   return JSON.stringify(exportData, null, 2);
 }
 
 /**
- * Import week plan from JSON string
+ * Import arc plan from JSON string
  */
-export function importWeekPlanFromJSON(jsonString: string): WeekPlan | null {
+export function importArcPlanFromJSON(jsonString: string): ArcPlan | null {
   try {
     const data = JSON.parse(jsonString);
-    
-    // Validate basic structure
-    if (!data.metadata || !data.tweets || !data.zoraContent) {
-      console.error('Invalid import data: missing required fields');
+
+    if (!data.posts || !Array.isArray(data.posts)) {
+      console.error('Invalid import data: missing posts array');
       return null;
     }
-    
-    // Create a new WeekPlan from imported data
-    const plan: WeekPlan = {
+
+    const plan: ArcPlan = {
       id: generateId(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      weekOf: data.weekOf || data.metadata.weekOf || '',
-      tweetScheduleRaw: '', // Not needed when importing
-      voiceActivationRaw: '',
-      artifactRaw: '',
-      parsed: {
-        metadata: data.metadata,
-        tweets: data.tweets.map((t: TweetItem) => ({ ...t, id: t.id || generateId() })),
-        engagementBlocks: (data.engagementBlocks || []).map((e: EngagementBlock) => ({ ...e, id: e.id || generateId() })),
-        zoraContent: data.zoraContent.map((z: ZoraContent) => ({ ...z, id: z.id || generateId() })),
-      },
+      arcName: data.arcName || 'Imported Arc',
+      startDate: data.startDate || new Date().toISOString().split('T')[0],
+      igAccountId: null,
+      igAccessToken: null,
+      posts: data.posts.map((p: any) => ({
+        id: p.id || generateId(),
+        day: p.day,
+        dayOfWeek: p.dayOfWeek || 'Mon',
+        type: p.type || 'midday',
+        title: p.title || '',
+        caption: p.caption || '',
+        images: p.images || [],
+        scheduledTime: p.scheduledTime || null,
+        status: p.status || 'draft',
+        igContainerId: null,
+        igMediaId: p.igMediaId || null,
+        igPermalink: p.igPermalink || null,
+        publishedAt: p.publishedAt || null,
+        errorMessage: null,
+      })),
     };
-    
+
     return plan;
   } catch (err) {
-    console.error('Failed to import week plan:', err);
+    console.error('Failed to import arc plan:', err);
     return null;
   }
 }
 
 /**
  * Save file to file system using File System Access API
- * Falls back to download if API not available
  */
 export async function saveJSONToFileSystem(content: string, suggestedFilename: string): Promise<boolean> {
-  // Check if File System Access API is available
   if ('showSaveFilePicker' in window) {
     try {
       const fileHandle = await (window as any).showSaveFilePicker({
@@ -238,23 +187,20 @@ export async function saveJSONToFileSystem(content: string, suggestedFilename: s
           description: 'JSON files',
           accept: { 'application/json': ['.json'] },
         }],
-        startIn: 'documents', // Try to start in Documents folder
+        startIn: 'documents',
       });
-      
+
       const writable = await fileHandle.createWritable();
       await writable.write(content);
       await writable.close();
-      
       return true;
     } catch (err: any) {
-      // User cancelled or error occurred
       if (err.name !== 'AbortError') {
         console.error('Error saving file:', err);
       }
       return false;
     }
   } else {
-    // Fallback to download
     const blob = new Blob([content], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
